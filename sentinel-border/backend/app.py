@@ -269,6 +269,7 @@ async def screen_document(
             "qr_data_mismatch": forensics.qr_data_mismatch,
             "region_anomalies": forensics.region_anomalies,
             "dynamic_region_anomalies": forensics.dynamic_region_anomalies,
+            "text_coordinate_anomalies": forensics.text_coordinate_anomalies,
             "vlm_tamper_detected": forensics.vlm_tamper_detected,
             "vlm_tamper_reason": forensics.vlm_tamper_reason,
             "independent_signal_count": forensics.independent_signal_count,

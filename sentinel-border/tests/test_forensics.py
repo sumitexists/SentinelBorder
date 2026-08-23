@@ -35,6 +35,7 @@ from modules.forensics import (
     _run_copy_move,
     _run_edge_discontinuity,
     _run_qr_consistency,
+    _run_text_coordinate_analysis,
     _run_text_consistency,
     _run_photo_boundary,
     _audit_exif,
@@ -126,6 +127,25 @@ def test_qr_not_detected_on_plain_image(clean_white_jpeg: bytes) -> None:
     assert detected is False
     assert sha == ""
     assert mismatch is False
+
+
+# ─── Text coordinate geometry ────────────────────────────────────────────────
+
+def _bbox(x: int, y: int, width: int = 120, height: int = 12) -> list[list[int]]:
+    return [[x, y], [x + width, y], [x + width, y + height], [x, y + height]]
+
+
+def test_text_coordinate_analysis_clean_grid_has_no_anomalies() -> None:
+    bboxes = [_bbox(100, 40 + i * 22) for i in range(6)]
+    anomalies = _run_text_coordinate_analysis(bboxes)
+    assert anomalies == []
+
+
+def test_text_coordinate_analysis_flags_shifted_line_angle() -> None:
+    bboxes = [_bbox(100, 40 + i * 22) for i in range(6)]
+    bboxes[3] = [[100, 106], [220, 118], [220, 130], [100, 118]]
+    anomalies = _run_text_coordinate_analysis(bboxes)
+    assert any("coordinate angle" in anomaly for anomaly in anomalies)
 
 
 # ─── Metadata audit ──────────────────────────────────────────────────────────
@@ -242,7 +262,7 @@ _REQUIRED_RESULT_FIELDS = {
     "ela_legacy_score", "ela_v2_score", "ela_v2_detected",
     "copy_move_detected", "copy_move_score",
     "qr_detected", "qr_payload_sha256", "qr_data_mismatch",
-    "region_anomalies",
+    "region_anomalies", "dynamic_region_anomalies", "text_coordinate_anomalies",
     "independent_signal_count", "tamper_evidence_detected", "forensic_confidence",
     # Shadow fields
     "text_consistency_score", "text_consistency_anomaly",

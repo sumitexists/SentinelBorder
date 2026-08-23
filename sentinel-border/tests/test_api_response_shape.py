@@ -114,7 +114,7 @@ _FORENSIC_KEYS = {
     "ela_legacy_score", "ela_v2_score", "ela_v2_detected",
     "copy_move_detected", "copy_move_score",
     "qr_detected", "qr_payload_sha256", "qr_data_mismatch",
-    "region_anomalies",
+    "region_anomalies", "dynamic_region_anomalies", "text_coordinate_anomalies",
     "independent_signal_count", "tamper_evidence_detected", "forensic_confidence",
     # Shadow keys — must always be present
     "text_consistency_score", "text_consistency_anomaly",

@@ -16,7 +16,9 @@ from PIL import ExifTags, Image
 from config import (COPY_MOVE_MIN_INLIERS, ELA_RECOMPRESS_QUALITY,
                     ELA_TAMPER_THRESHOLD, ELA_V2_THRESHOLD,
                     FORENSICS_V2_ENABLED, FORENSICS_SHADOW_MODE,
-                    FORENSICS_USE_REGION_ANALYSIS, SUSPICIOUS_SOFTWARE_TAGS)
+                    FORENSICS_USE_REGION_ANALYSIS,
+                    FORENSICS_V2_CORROBORATION_MIN,
+                    SUSPICIOUS_SOFTWARE_TAGS)
 from utils.helpers import bytes_to_pil, get_logger, image_to_base64, pil_to_numpy
 
 log = get_logger("forensics")
@@ -43,6 +45,7 @@ class ForensicsResult:
     qr_data_mismatch: bool = False
     region_anomalies: list[str] = field(default_factory=list)
     dynamic_region_anomalies: list[str] = field(default_factory=list)
+    text_coordinate_anomalies: list[str] = field(default_factory=list)
     vlm_tamper_detected: bool = False
     vlm_tamper_reason: str = ""
     independent_signal_count: int = 0
@@ -161,6 +164,97 @@ def _run_dynamic_text_region_analysis(ela_map: np.ndarray, bboxes: list) -> list
         except Exception as e:
             log.warning("Failed to analyze dynamic text region: %s", e)
             
+    return anomalies
+
+
+def _run_text_coordinate_analysis(bboxes: list) -> list[str]:
+    """Detect OCR text boxes whose line geometry is inconsistent with neighbors.
+
+    ELA answers "does this area recompress differently?". This signal answers
+    "does this text line sit strangely compared with the surrounding layout?".
+    It is relative to nearby OCR boxes so it survives scaling, camera distance,
+    and moderate cropping.
+    """
+    if len(bboxes) < 5:
+        return []
+
+    lines = []
+    for index, bbox in enumerate(bboxes):
+        try:
+            points = np.asarray(bbox, dtype=np.float32)
+            if points.shape != (4, 2):
+                continue
+            x_min, y_min = np.min(points[:, 0]), np.min(points[:, 1])
+            x_max, y_max = np.max(points[:, 0]), np.max(points[:, 1])
+            width = float(x_max - x_min)
+            height = float(y_max - y_min)
+            if width < 8 or height < 4:
+                continue
+            top_dx = float(points[1][0] - points[0][0])
+            top_dy = float(points[1][1] - points[0][1])
+            angle = float(np.degrees(np.arctan2(top_dy, top_dx))) if top_dx or top_dy else 0.0
+            lines.append({
+                "index": index + 1,
+                "x": float((x_min + x_max) / 2.0),
+                "y": float((y_min + y_max) / 2.0),
+                "height": height,
+                "angle": angle,
+            })
+        except Exception as exc:
+            log.warning("Failed to parse OCR text coordinates: %s", exc)
+
+    if len(lines) < 5:
+        return []
+
+    anomalies: list[str] = []
+
+    def _robust_outlier_indices(values: list[float], min_abs_delta: float, z_threshold: float = 4.5) -> list[int]:
+        arr = np.asarray(values, dtype=np.float32)
+        median = float(np.median(arr))
+        mad = float(np.median(np.abs(arr - median))) + 1e-6
+        outliers = []
+        for idx, value in enumerate(values):
+            robust_z = 0.6745 * abs(float(value) - median) / mad
+            if robust_z >= z_threshold and abs(float(value) - median) >= min_abs_delta:
+                outliers.append(idx)
+        return outliers
+
+    for idx in _robust_outlier_indices([line["angle"] for line in lines], min_abs_delta=3.0):
+        line = lines[idx]
+        anomalies.append(
+            f"Text line {line['index']} has abnormal coordinate angle "
+            f"({line['angle']:.1f} degrees vs neighboring text)."
+        )
+
+    median_height = float(np.median([line["height"] for line in lines]))
+    min_height_delta = max(4.0, median_height * 0.35)
+    for idx in _robust_outlier_indices([line["height"] for line in lines], min_abs_delta=min_height_delta):
+        line = lines[idx]
+        anomalies.append(
+            f"Text line {line['index']} has abnormal coordinate height "
+            f"({line['height']:.1f}px vs expected ~{median_height:.1f}px)."
+        )
+
+    sorted_lines = sorted(lines, key=lambda line: line["y"])
+    gaps = [
+        float(sorted_lines[i + 1]["y"] - sorted_lines[i]["y"])
+        for i in range(len(sorted_lines) - 1)
+        if sorted_lines[i + 1]["y"] - sorted_lines[i]["y"] > 2
+    ]
+    if len(gaps) >= 4:
+        median_gap = float(np.median(gaps))
+        mad_gap = float(np.median(np.abs(np.asarray(gaps, dtype=np.float32) - median_gap))) + 1e-6
+        for i, gap in enumerate(gaps):
+            robust_z = 0.6745 * abs(gap - median_gap) / mad_gap
+            min_gap_delta = max(6.0, median_gap * 0.45)
+            if robust_z >= 4.5 and abs(gap - median_gap) >= min_gap_delta:
+                before = sorted_lines[i]["index"]
+                after = sorted_lines[i + 1]["index"]
+                anomalies.append(
+                    f"Unexpected vertical coordinate shift between text lines "
+                    f"{before} and {after} ({gap:.1f}px vs expected ~{median_gap:.1f}px)."
+                )
+
     return anomalies
 
 
@@ -333,10 +427,15 @@ def _fuse_evidence(result: ForensicsResult) -> None:
         result.copy_move_detected, 
         bool(result.region_anomalies),
         bool(result.dynamic_region_anomalies),
+        bool(result.text_coordinate_anomalies),
         result.vlm_tamper_detected
     ]
     result.independent_signal_count = sum(signals)
-    result.tamper_evidence_detected = result.qr_data_mismatch or result.vlm_tamper_detected or result.independent_signal_count >= 2
+    result.tamper_evidence_detected = (
+        result.qr_data_mismatch
+        or result.vlm_tamper_detected
+        or result.independent_signal_count >= FORENSICS_V2_CORROBORATION_MIN
+    )
     result.forensic_confidence = (
         "HIGH" if (result.qr_data_mismatch or result.independent_signal_count >= 3)
         else ("MEDIUM" if result.tamper_evidence_detected or result.metadata_anomaly else "LOW")
@@ -387,6 +486,7 @@ def run_forensics(
             result.region_anomalies = _run_region_analysis(ela_map, doc_type)
         if text_bboxes:
             result.dynamic_region_anomalies = _run_dynamic_text_region_analysis(ela_map, text_bboxes)
+            result.text_coordinate_anomalies = _run_text_coordinate_analysis(text_bboxes)
             
     except Exception as exc:
         result.warnings.append(f"ELA analysis failed: {exc}")
@@ -429,5 +529,7 @@ def run_forensics(
     if result.qr_data_mismatch:
         result.warnings.append("QR/text consistency mismatch detected — verify document issuer data.")
     result.warnings.extend(result.region_anomalies)
+    result.warnings.extend(result.dynamic_region_anomalies)
+    result.warnings.extend(result.text_coordinate_anomalies)
     result.warnings.extend(result.metadata_flags)
     return result
