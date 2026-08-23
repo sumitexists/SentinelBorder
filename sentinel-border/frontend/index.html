@@ -1,263 +1,265 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="SentinelBorder — Autonomous edge-native border document screening and biometric triage system for SSB checkpoints (SIH 26188)" />
+  <meta name="description"
+    content="SentinelBorder — Autonomous edge-native border document screening and biometric triage system for SSB checkpoints (SIH 26188)" />
   <title>SentinelBorder | SSB Checkpoint Triage System</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
+
 <body>
 
-<!-- ════════════════════════ HEADER ════════════════════════ -->
-<header id="header" role="banner">
-  <div class="logo">
-    <div class="logo-icon" aria-hidden="true">🛡</div>
-    <div>
-      <div class="logo-text">SentinelBorder</div>
-      <div class="logo-sub">AUTONOMOUS DOCUMENT TRIAGE SYSTEM — SIH 26188 · MHA / SSB</div>
-    </div>
-  </div>
-  <div id="status-bar" aria-live="polite">
-    <div id="system-status">SYSTEM ONLINE</div>
-    <span id="clock"></span>
-  </div>
-</header>
-
-<!-- ════════════════════ MAIN 3-PANEL GRID ════════════════════ -->
-<main id="main-grid" role="main">
-
-  <!-- ═══ PANEL 1: INGESTION ═══ -->
-  <section class="panel" id="panel-ingestion" aria-labelledby="panel1-title">
-    <div class="panel-header">
-      <span class="panel-icon" aria-hidden="true">📥</span>
-      <span class="panel-title" id="panel1-title">Document Ingestion</span>
-      <span class="panel-num">MODULE 01</span>
-    </div>
-    <div class="panel-body">
-
-      <!-- File Drop Zone -->
-      <div id="drop-zone" role="button" tabindex="0"
-           aria-label="Drop identity document here or click to upload">
-        <div class="dz-icon" aria-hidden="true">📄</div>
-        <div class="dz-label">DROP DOCUMENT HERE</div>
-        <div class="dz-sub">JPG · PNG · PDF &nbsp;|&nbsp; Passport · Visa · EPIC · Nagrikta</div>
-        <input type="file" id="file-input" accept="image/jpeg,image/png,application/pdf"
-               aria-label="Select document file" />
+  <!-- ════════════════════════ HEADER ════════════════════════ -->
+  <header id="header" role="banner">
+    <div class="logo">
+      <div class="logo-icon" aria-hidden="true">🛡</div>
+      <div>
+        <div class="logo-text">BorderShield</div>
+        <div class="logo-sub">AUTONOMOUS DOCUMENT TRIAGE SYSTEM — SIH 26188 · MHA / SSB</div>
       </div>
+    </div>
+    <div id="status-bar" aria-live="polite">
+      <div id="system-status">SYSTEM ONLINE</div>
+      <span id="clock"></span>
+    </div>
+  </header>
 
-      <img id="doc-preview" alt="Document preview" />
-      <div id="doc-filename" aria-live="polite"></div>
+  <!-- ════════════════════ MAIN 3-PANEL GRID ════════════════════ -->
+  <main id="main-grid" role="main">
 
-      <!-- Webcam -->
-      <div class="webcam-section">
-        <div class="webcam-label">▶ LIVE BIOMETRIC FEED</div>
-        <video id="webcam-feed" autoplay muted playsinline
-               aria-label="Live webcam feed"></video>
-        <canvas id="webcam-canvas"></canvas>
+    <!-- ═══ PANEL 1: INGESTION ═══ -->
+    <section class="panel" id="panel-ingestion" aria-labelledby="panel1-title">
+      <div class="panel-header">
+        <span class="panel-icon" aria-hidden="true">📥</span>
+        <span class="panel-title" id="panel1-title">Document Ingestion</span>
+        <span class="panel-num">MODULE 01</span>
+      </div>
+      <div class="panel-body">
 
-        <div class="webcam-controls">
-          <button class="btn" id="btn-start-cam" aria-label="Start webcam">⚡ START CAM</button>
-          <button class="btn btn-snap" id="btn-snapshot" disabled
-                  aria-label="Take snapshot from webcam">📸 SNAPSHOT</button>
+        <!-- File Drop Zone -->
+        <div id="drop-zone" role="button" tabindex="0" aria-label="Drop identity document here or click to upload">
+          <div class="dz-icon" aria-hidden="true">📄</div>
+          <div class="dz-label">DROP DOCUMENT HERE</div>
+          <div class="dz-sub">JPG · PNG · PDF &nbsp;|&nbsp; Passport · Visa · EPIC · Nagrikta</div>
+          <input type="file" id="file-input" accept="image/jpeg,image/png,application/pdf"
+            aria-label="Select document file" />
         </div>
 
-        <img id="snapshot-preview" alt="Webcam snapshot" />
+        <img id="doc-preview" alt="Document preview" />
+        <div id="doc-filename" aria-live="polite"></div>
+
+        <!-- Webcam -->
+        <div class="webcam-section">
+          <div class="webcam-label">▶ LIVE BIOMETRIC FEED</div>
+          <video id="webcam-feed" autoplay muted playsinline aria-label="Live webcam feed"></video>
+          <canvas id="webcam-canvas"></canvas>
+
+          <div class="webcam-controls">
+            <button class="btn" id="btn-start-cam" aria-label="Start webcam">⚡ START CAM</button>
+            <button class="btn btn-snap" id="btn-snapshot" disabled aria-label="Take snapshot from webcam">📸
+              SNAPSHOT</button>
+          </div>
+
+          <img id="snapshot-preview" alt="Webcam snapshot" />
+        </div>
+
+        <!-- Execute Button -->
+        <button class="btn btn-primary" id="btn-run" disabled aria-label="Run triage audit">
+          ⟁ RUN TRIAGE AUDIT
+        </button>
+
+        <div id="processing-info" class="stat-row" style="display:none">
+          <span class="stat-label">PROCESSING TIME</span>
+          <span class="stat-val" id="proc-time">—</span>
+        </div>
+
       </div>
+    </section><!-- /panel-ingestion -->
 
-      <!-- Execute Button -->
-      <button class="btn btn-primary" id="btn-run" disabled
-              aria-label="Run triage audit">
-        ⟁ RUN TRIAGE AUDIT
-      </button>
-
-      <div id="processing-info" class="stat-row" style="display:none">
-        <span class="stat-label">PROCESSING TIME</span>
-        <span class="stat-val" id="proc-time">—</span>
+    <!-- ═══ PANEL 2: CREDENTIALS ═══ -->
+    <section class="panel" id="panel-credentials" aria-labelledby="panel2-title">
+      <div class="panel-header">
+        <span class="panel-icon" aria-hidden="true">🪪</span>
+        <span class="panel-title" id="panel2-title">Credential Verification</span>
+        <span class="panel-num">MODULE 02</span>
       </div>
+      <div class="panel-body">
 
-    </div>
-  </section><!-- /panel-ingestion -->
+        <div id="credentials-idle" class="idle-placeholder">
+          AWAITING DOCUMENT SCAN<br />
+          <span style="font-size:0.6rem">Upload a document and run triage to extract fields</span>
+        </div>
 
-  <!-- ═══ PANEL 2: CREDENTIALS ═══ -->
-  <section class="panel" id="panel-credentials" aria-labelledby="panel2-title">
-    <div class="panel-header">
-      <span class="panel-icon" aria-hidden="true">🪪</span>
-      <span class="panel-title" id="panel2-title">Credential Verification</span>
-      <span class="panel-num">MODULE 02</span>
-    </div>
-    <div class="panel-body">
+        <div id="credentials-content" style="display:none; flex-direction:column; gap:12px;">
 
-      <div id="credentials-idle" class="idle-placeholder">
-        AWAITING DOCUMENT SCAN<br/>
-        <span style="font-size:0.6rem">Upload a document and run triage to extract fields</span>
+          <!-- Extracted Fields -->
+          <div class="section-label">▶ EXTRACTED IDENTITY FIELDS</div>
+          <div class="field-grid" id="field-grid">
+            <div class="field-item full">
+              <div class="field-label">FULL NAME</div>
+              <div class="field-value" id="field-name">—</div>
+            </div>
+            <div class="field-item">
+              <div class="field-label">DOC NUMBER</div>
+              <div class="field-value" id="field-docnum">—</div>
+            </div>
+            <div class="field-item">
+              <div class="field-label">NATIONALITY</div>
+              <div class="field-value" id="field-nationality">—</div>
+            </div>
+            <div class="field-item">
+              <div class="field-label">DATE OF BIRTH</div>
+              <div class="field-value" id="field-dob">—</div>
+            </div>
+            <div class="field-item">
+              <div class="field-label">SEX</div>
+              <div class="field-value" id="field-sex">—</div>
+            </div>
+            <div class="field-item">
+              <div class="field-label">EXPIRY DATE</div>
+              <div class="field-value" id="field-expiry">—</div>
+            </div>
+            <div class="field-item">
+              <div class="field-label">DOC TYPE</div>
+              <div class="field-value" id="field-doctype">—</div>
+            </div>
+            <div class="field-item">
+              <div class="field-label">ISSUING COUNTRY</div>
+              <div class="field-value" id="field-country">—</div>
+            </div>
+            <div class="field-item full">
+              <div class="field-label">ADDRESS</div>
+              <div class="field-value" id="field-address">—</div>
+            </div>
+            <div class="field-item full">
+              <div class="field-label">OCR ENGINE</div>
+              <div class="field-value" id="field-engine">—</div>
+            </div>
+          </div>
+
+          <div class="section-divider"></div>
+
+          <!-- Checksum Indicators -->
+          <div class="section-label">▶ ICAO 9303 CHECKSUM VALIDATION</div>
+          <div class="checksum-grid" id="checksum-grid">
+            <span class="check-tag pending" id="chk-docnum">⟐ DOC NUMBER</span>
+            <span class="check-tag pending" id="chk-dob">⟐ DATE OF BIRTH</span>
+            <span class="check-tag pending" id="chk-expiry">⟐ EXPIRY DATE</span>
+            <span class="check-tag pending" id="chk-composite">⟐ COMPOSITE</span>
+            <span class="check-tag pending" id="chk-expired">⟐ DOC VALIDITY</span>
+            <span class="check-tag pending" id="chk-parity">⟐ VIZ/MRZ PARITY</span>
+          </div>
+
+          <div class="section-divider"></div>
+
+          <!-- MRZ Raw -->
+          <div class="section-label">▶ MACHINE READABLE ZONE (RAW)</div>
+          <div class="mrz-block" id="mrz-raw-display">NO MRZ DETECTED</div>
+
+        </div><!-- /credentials-content -->
+
       </div>
+    </section><!-- /panel-credentials -->
 
-      <div id="credentials-content" style="display:none; flex-direction:column; gap:12px;">
+    <!-- ═══ PANEL 3: FORENSIC AUDIT ═══ -->
+    <section class="panel" id="panel-forensics" aria-labelledby="panel3-title">
+      <div class="panel-header">
+        <span class="panel-icon" aria-hidden="true">🔍</span>
+        <span class="panel-title" id="panel3-title">Forensic Audit</span>
+        <span class="panel-num">MODULE 03 / 04</span>
+      </div>
+      <div class="panel-body">
 
-        <!-- Extracted Fields -->
-        <div class="section-label">▶ EXTRACTED IDENTITY FIELDS</div>
-        <div class="field-grid" id="field-grid">
-          <div class="field-item full">
-            <div class="field-label">FULL NAME</div>
-            <div class="field-value" id="field-name">—</div>
+        <!-- Threat Badge -->
+        <div id="threat-badge" role="status" aria-live="assertive">
+          <div id="threat-level-text">STANDBY</div>
+          <div id="threat-badge-label">BORDER THREAT INDEX</div>
+        </div>
+
+        <!-- Score Gauge -->
+        <div class="gauge-container" aria-label="Composite risk score gauge">
+          <div class="gauge-label">COMPOSITE RISK SCORE</div>
+          <div id="score-value">—</div>
+          <div class="gauge-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+            id="gauge-track">
+            <div class="gauge-fill" id="gauge-fill"></div>
           </div>
-          <div class="field-item">
-            <div class="field-label">DOC NUMBER</div>
-            <div class="field-value" id="field-docnum">—</div>
-          </div>
-          <div class="field-item">
-            <div class="field-label">NATIONALITY</div>
-            <div class="field-value" id="field-nationality">—</div>
-          </div>
-          <div class="field-item">
-            <div class="field-label">DATE OF BIRTH</div>
-            <div class="field-value" id="field-dob">—</div>
-          </div>
-          <div class="field-item">
-            <div class="field-label">SEX</div>
-            <div class="field-value" id="field-sex">—</div>
-          </div>
-          <div class="field-item">
-            <div class="field-label">EXPIRY DATE</div>
-            <div class="field-value" id="field-expiry">—</div>
-          </div>
-          <div class="field-item">
-            <div class="field-label">DOC TYPE</div>
-            <div class="field-value" id="field-doctype">—</div>
-          </div>
-          <div class="field-item">
-            <div class="field-label">ISSUING COUNTRY</div>
-            <div class="field-value" id="field-country">—</div>
-          </div>
-          <div class="field-item full">
-            <div class="field-label">ADDRESS</div>
-            <div class="field-value" id="field-address">—</div>
-          </div>
-          <div class="field-item full">
-            <div class="field-label">OCR ENGINE</div>
-            <div class="field-value" id="field-engine">—</div>
+          <div class="gauge-numbers">
+            <span>0</span><span>25</span><span>50</span><span>75</span><span>100</span>
           </div>
         </div>
 
         <div class="section-divider"></div>
 
-        <!-- Checksum Indicators -->
-        <div class="section-label">▶ ICAO 9303 CHECKSUM VALIDATION</div>
-        <div class="checksum-grid" id="checksum-grid">
-          <span class="check-tag pending" id="chk-docnum">⟐ DOC NUMBER</span>
-          <span class="check-tag pending" id="chk-dob">⟐ DATE OF BIRTH</span>
-          <span class="check-tag pending" id="chk-expiry">⟐ EXPIRY DATE</span>
-          <span class="check-tag pending" id="chk-composite">⟐ COMPOSITE</span>
-          <span class="check-tag pending" id="chk-expired">⟐ DOC VALIDITY</span>
-          <span class="check-tag pending" id="chk-parity">⟐ VIZ/MRZ PARITY</span>
+        <!-- ELA Heatmap -->
+        <div class="section-label">▶ ELA TAMPER HEATMAP</div>
+        <div id="ela-heatmap-container">
+          <div id="ela-placeholder">RUN TRIAGE TO GENERATE HEATMAP</div>
+          <img id="ela-heatmap" alt="ELA tamper heatmap" />
+        </div>
+        <div class="stat-row" id="ela-stat-row" style="display:none">
+          <span class="stat-label">ELA SCORE</span>
+          <span class="stat-val" id="ela-score-val">—</span>
+        </div>
+        <div class="stat-row" id="edge-stat-row" style="display:none">
+          <span class="stat-label">EDGE DISCONTINUITY</span>
+          <span class="stat-val" id="edge-stat-val">—</span>
         </div>
 
         <div class="section-divider"></div>
 
-        <!-- MRZ Raw -->
-        <div class="section-label">▶ MACHINE READABLE ZONE (RAW)</div>
-        <div class="mrz-block" id="mrz-raw-display">NO MRZ DETECTED</div>
-
-      </div><!-- /credentials-content -->
-
-    </div>
-  </section><!-- /panel-credentials -->
-
-  <!-- ═══ PANEL 3: FORENSIC AUDIT ═══ -->
-  <section class="panel" id="panel-forensics" aria-labelledby="panel3-title">
-    <div class="panel-header">
-      <span class="panel-icon" aria-hidden="true">🔍</span>
-      <span class="panel-title" id="panel3-title">Forensic Audit</span>
-      <span class="panel-num">MODULE 03 / 04</span>
-    </div>
-    <div class="panel-body">
-
-      <!-- Threat Badge -->
-      <div id="threat-badge" role="status" aria-live="assertive">
-        <div id="threat-level-text">STANDBY</div>
-        <div id="threat-badge-label">BORDER THREAT INDEX</div>
-      </div>
-
-      <!-- Score Gauge -->
-      <div class="gauge-container" aria-label="Composite risk score gauge">
-        <div class="gauge-label">COMPOSITE RISK SCORE</div>
-        <div id="score-value">—</div>
-        <div class="gauge-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="gauge-track">
-          <div class="gauge-fill" id="gauge-fill"></div>
+        <!-- Biometric Comparison -->
+        <div class="section-label">▶ BIOMETRIC FACE VERIFICATION</div>
+        <div class="face-comparison">
+          <div class="face-frame">
+            <div class="face-label">DOCUMENT PHOTO</div>
+            <img id="face-doc" alt="Cropped face from document" />
+          </div>
+          <div class="face-frame">
+            <div class="face-label">LIVE CAPTURE</div>
+            <img id="face-live" alt="Cropped face from live feed" />
+          </div>
         </div>
-        <div class="gauge-numbers">
-          <span>0</span><span>25</span><span>50</span><span>75</span><span>100</span>
+        <div class="stat-row" id="bio-stat-row" style="display:none">
+          <span class="stat-label">COSINE DISTANCE</span>
+          <span class="stat-val" id="bio-distance">—</span>
         </div>
-      </div>
-
-      <div class="section-divider"></div>
-
-      <!-- ELA Heatmap -->
-      <div class="section-label">▶ ELA TAMPER HEATMAP</div>
-      <div id="ela-heatmap-container">
-        <div id="ela-placeholder">RUN TRIAGE TO GENERATE HEATMAP</div>
-        <img id="ela-heatmap" alt="ELA tamper heatmap" />
-      </div>
-      <div class="stat-row" id="ela-stat-row" style="display:none">
-        <span class="stat-label">ELA SCORE</span>
-        <span class="stat-val" id="ela-score-val">—</span>
-      </div>
-      <div class="stat-row" id="edge-stat-row" style="display:none">
-        <span class="stat-label">EDGE DISCONTINUITY</span>
-        <span class="stat-val" id="edge-stat-val">—</span>
-      </div>
-
-      <div class="section-divider"></div>
-
-      <!-- Biometric Comparison -->
-      <div class="section-label">▶ BIOMETRIC FACE VERIFICATION</div>
-      <div class="face-comparison">
-        <div class="face-frame">
-          <div class="face-label">DOCUMENT PHOTO</div>
-          <img id="face-doc" alt="Cropped face from document" />
+        <div class="stat-row" id="bio-status-row" style="display:none">
+          <span class="stat-label">BIOMETRIC STATUS</span>
+          <span class="stat-val" id="bio-status-val">—</span>
         </div>
-        <div class="face-frame">
-          <div class="face-label">LIVE CAPTURE</div>
-          <img id="face-live" alt="Cropped face from live feed" />
+
+        <div class="section-divider"></div>
+
+        <!-- Flags Feed -->
+        <div class="section-label">▶ THREAT FLAGS LOG</div>
+        <div id="flags-feed" role="log" aria-live="polite" aria-label="Threat flags feed">
+          <div class="idle-placeholder">NO FLAGS — SYSTEM CLEAR</div>
         </div>
+
       </div>
-      <div class="stat-row" id="bio-stat-row" style="display:none">
-        <span class="stat-label">COSINE DISTANCE</span>
-        <span class="stat-val" id="bio-distance">—</span>
-      </div>
-      <div class="stat-row" id="bio-status-row" style="display:none">
-        <span class="stat-label">BIOMETRIC STATUS</span>
-        <span class="stat-val" id="bio-status-val">—</span>
-      </div>
+    </section><!-- /panel-forensics -->
 
-      <div class="section-divider"></div>
+  </main>
 
-      <!-- Flags Feed -->
-      <div class="section-label">▶ THREAT FLAGS LOG</div>
-      <div id="flags-feed" role="log" aria-live="polite" aria-label="Threat flags feed">
-        <div class="idle-placeholder">NO FLAGS — SYSTEM CLEAR</div>
-      </div>
+  <!-- ════════════════════ LOADING OVERLAY ════════════════════ -->
+  <div id="loading-overlay" role="status" aria-label="Processing" aria-live="assertive">
+    <div class="loading-spinner" aria-hidden="true"></div>
+    <div class="loading-text" id="loading-step">INITIALISING PIPELINE...</div>
+    <div class="loading-subtext">SENTINEL BORDER TRIAGE SYSTEM — DO NOT INTERRUPT</div>
+  </div>
 
-    </div>
-  </section><!-- /panel-forensics -->
+  <!-- ════════════════════ FOOTER ════════════════════ -->
+  <footer id="footer">
+    SENTINELBORDER v1.0 · SIH 26188 · MINISTRY OF HOME AFFAIRS · SASHASTRA SEEMA BAL ·
+    CLASSIFIED SYSTEM — AUTHORISED PERSONNEL ONLY
+  </footer>
 
-</main>
-
-<!-- ════════════════════ LOADING OVERLAY ════════════════════ -->
-<div id="loading-overlay" role="status" aria-label="Processing" aria-live="assertive">
-  <div class="loading-spinner" aria-hidden="true"></div>
-  <div class="loading-text" id="loading-step">INITIALISING PIPELINE...</div>
-  <div class="loading-subtext">SENTINEL BORDER TRIAGE SYSTEM — DO NOT INTERRUPT</div>
-</div>
-
-<!-- ════════════════════ FOOTER ════════════════════ -->
-<footer id="footer">
-  SENTINELBORDER v1.0 · SIH 26188 · MINISTRY OF HOME AFFAIRS · SASHASTRA SEEMA BAL ·
-  CLASSIFIED SYSTEM — AUTHORISED PERSONNEL ONLY
-</footer>
-
-<script src="js/api.js"></script>
-<script src="js/app.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
 </body>
+
 </html>

@@ -92,7 +92,10 @@ def _make_passport_ocr() -> OCRResult:
         expiry_check="6",
         optional_data="",
         composite_check="2",
-        viz_text="SHAH RAHUL KUMAR INDIAN A1234567",
+        # Include both the country-code 'IND' and the full-form 'INDIAN' that appear
+        # in real Indian passport VIZ text.  The parity check matches tokens from the
+        # MRZ nationality field ('IND') against the VIZ token set.
+        viz_text="SHAH RAHUL KUMAR IND INDIAN A1234567",
     )
     return ocr
 

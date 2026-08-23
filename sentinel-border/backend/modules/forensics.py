@@ -42,6 +42,9 @@ class ForensicsResult:
     qr_payload_sha256: str = ""
     qr_data_mismatch: bool = False
     region_anomalies: list[str] = field(default_factory=list)
+    dynamic_region_anomalies: list[str] = field(default_factory=list)
+    vlm_tamper_detected: bool = False
+    vlm_tamper_reason: str = ""
     independent_signal_count: int = 0
     tamper_evidence_detected: bool = False
     forensic_confidence: str = "LOW"
@@ -119,8 +122,45 @@ def _run_region_analysis(ela_map: np.ndarray, doc_type: str) -> list[str]:
             continue
         region_median = float(np.median(region))
         robust_z = 0.6745 * (region_median - median) / mad
+        robust_z = 0.6745 * (region_median - median) / mad
         if robust_z >= 4.0 and region_median > ELA_V2_THRESHOLD:
             anomalies.append(f"Unusually high recompression residual in {name} region (z={robust_z:.1f}).")
+    return anomalies
+
+
+def _run_dynamic_text_region_analysis(ela_map: np.ndarray, bboxes: list) -> list[str]:
+    """Calculates ELA noise strictly inside dynamic text coordinates extracted by OCR.
+    This defeats forged text placed slightly outside fixed region templates.
+    """
+    if not bboxes:
+        return []
+    
+    height, width = ela_map.shape
+    median = float(np.median(ela_map))
+    mad = float(np.median(np.abs(ela_map - median))) + 1e-6
+    anomalies: list[str] = []
+    
+    for i, bbox in enumerate(bboxes):
+        try:
+            # bbox is a list of 4 points: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+            # Get bounding rectangle
+            x_coords = [pt[0] for pt in bbox]
+            y_coords = [pt[1] for pt in bbox]
+            x1, y1 = max(0, int(min(x_coords))), max(0, int(min(y_coords)))
+            x2, y2 = min(width, int(max(x_coords))), min(height, int(max(y_coords)))
+            
+            region = ela_map[y1:y2, x1:x2]
+            if not region.size:
+                continue
+                
+            region_median = float(np.median(region))
+            robust_z = 0.6745 * (region_median - median) / mad
+            
+            if robust_z >= 5.0 and region_median > ELA_V2_THRESHOLD:
+                anomalies.append(f"Anomalous recompression residual inside text line {i+1} coordinates (z={robust_z:.1f}).")
+        except Exception as e:
+            log.warning("Failed to analyze dynamic text region: %s", e)
+            
     return anomalies
 
 
@@ -287,10 +327,16 @@ def _audit_pdf_metadata(raw_bytes: bytes) -> list[str]:
 
 def _fuse_evidence(result: ForensicsResult) -> None:
     # Existing corroborated-evidence signals (always active).
-    signals = [result.ela_v2_detected, result.edge_discontinuity_detected,
-               result.copy_move_detected, bool(result.region_anomalies)]
+    signals = [
+        result.ela_v2_detected, 
+        result.edge_discontinuity_detected,
+        result.copy_move_detected, 
+        bool(result.region_anomalies),
+        bool(result.dynamic_region_anomalies),
+        result.vlm_tamper_detected
+    ]
     result.independent_signal_count = sum(signals)
-    result.tamper_evidence_detected = result.qr_data_mismatch or result.independent_signal_count >= 2
+    result.tamper_evidence_detected = result.qr_data_mismatch or result.vlm_tamper_detected or result.independent_signal_count >= 2
     result.forensic_confidence = (
         "HIGH" if (result.qr_data_mismatch or result.independent_signal_count >= 3)
         else ("MEDIUM" if result.tamper_evidence_detected or result.metadata_anomaly else "LOW")
@@ -307,6 +353,7 @@ def run_forensics(
     doc_type: str = "",
     doc_number: str = "",
     vision_fields: dict | None = None,
+    text_bboxes: list | None = None,
 ) -> ForensicsResult:
     """Run compatible and corroborated document-integrity analysis.
 
@@ -317,6 +364,7 @@ def run_forensics(
         doc_number:    Extracted document number, used for QR consistency check.
         vision_fields: Structured fields returned by Gemini/Ollama, used for
                        field-vision cross-check (shadow mode only).
+        text_bboxes:   OCR bounding boxes for dynamic text region analysis.
     """
     result = ForensicsResult()
     try:
@@ -334,7 +382,12 @@ def run_forensics(
         result.ela_score = result.ela_v2_score if FORENSICS_V2_ENABLED else result.ela_legacy_score
         result.ela_heatmap_b64 = v2_heatmap if FORENSICS_V2_ENABLED else legacy_heatmap
         result.ela_tamper_detected = result.ela_v2_detected if FORENSICS_V2_ENABLED else legacy_score >= ELA_TAMPER_THRESHOLD
-        result.region_anomalies = _run_region_analysis(ela_map, doc_type)
+        
+        if doc_type:
+            result.region_anomalies = _run_region_analysis(ela_map, doc_type)
+        if text_bboxes:
+            result.dynamic_region_anomalies = _run_dynamic_text_region_analysis(ela_map, text_bboxes)
+            
     except Exception as exc:
         result.warnings.append(f"ELA analysis failed: {exc}")
     try:

@@ -223,11 +223,11 @@ def test_preprocess_does_not_crash_on_clean_image(clean_white_jpeg: bytes) -> No
 
 
 def test_preprocess_resizes_wide_image() -> None:
-    """Images wider than 1200 px should be downscaled."""
+    """Images are normalised to the canonical 1600 px width (upscaled or downscaled)."""
     wide = np.full((300, 2000, 3), 200, dtype=np.uint8)
     import cv2
     import io
     ok, buf = cv2.imencode(".jpg", wide)
     img_bgr = bytes_to_numpy(buf.tobytes())
     result_bgr, _ = _preprocess(img_bgr)
-    assert result_bgr.shape[1] <= 1200
+    assert result_bgr.shape[1] == 1600

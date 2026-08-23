@@ -58,30 +58,44 @@ class OCRResult:
 
     # VIZ (visual zone) free-text
     viz_text: str = ""
+    text_bboxes: list = field(default_factory=list)
+
+    # ─── LLM Shadow Mode ──────────────────────────────────────────────────────────
+    vision_extracted_data: dict = field(default_factory=dict)
+    vlm_tamper_detected: bool = False
+    vlm_tamper_reason: str = ""
 
     # Confidence flag
     mrz_detected: bool = False
     ocr_engine_used: str = "none"
     errors: list[str] = field(default_factory=list)
 
+    # Gatekeeping flags (populated for non-MRZ docs via LLM)
+    is_government_id: bool = True
+    id_type: str = ""
+    id_reasoning: str = ""
+
 
 # ─── Pre-processing ───────────────────────────────────────────────────────────
 
-def _preprocess(img_bgr: np.ndarray) -> np.ndarray:
+def _preprocess(img_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """
     Normalise and de-skew a document image:
-    1. Resize to canonical width (1200 px) keeping aspect ratio.
+    1. Resize to canonical width (1600 px) keeping aspect ratio — wider gives
+       EasyOCR more pixels per character and consistently raises accuracy.
     2. Convert to grayscale.
     3. Apply CLAHE for local contrast enhancement.
     4. Estimate skew via Hough line angles and deskew.
-    5. Threshold (Otsu) to produce binary image for OCR.
-    Returns the processed BGR image (for downstream use) and the thresholded gray.
+    Returns (processed_bgr, gray).
     """
-    # 1. Resize
+    # 1. Resize — upscale narrow images, cap wide ones at 1600 px
     h, w = img_bgr.shape[:2]
-    if w > 1200:
-        scale = 1200 / w
-        img_bgr = cv2.resize(img_bgr, (1200, int(h * scale)), interpolation=cv2.INTER_LANCZOS4)
+    target_w = 1600
+    if w != target_w:
+        scale = target_w / w
+        img_bgr = cv2.resize(
+            img_bgr, (target_w, int(h * scale)), interpolation=cv2.INTER_LANCZOS4
+        )
 
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
 
@@ -97,8 +111,6 @@ def _preprocess(img_bgr: np.ndarray) -> np.ndarray:
     if lines is not None and len(lines) > 0:
         angles = []
         for line in lines:
-            # Use .flatten() for compatibility: older OpenCV returns (N,1,4),
-            # newer OpenCV may return (N,4) — both flatten to a 4-element 1-D array.
             x1, y1, x2, y2 = (int(v) for v in line.flatten()[:4])
             if x2 - x1 != 0:
                 angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
@@ -115,6 +127,25 @@ def _preprocess(img_bgr: np.ndarray) -> np.ndarray:
                 gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
 
     return img_bgr, gray
+
+
+def _sharpen_for_viz(img_bgr: np.ndarray) -> np.ndarray:
+    """
+    Prepare a sharpened BGR image specifically for EasyOCR VIZ extraction.
+
+    Indian passport VIZ text is printed in a compact, high-density layout.
+    An unsharp-mask pass on top of the CLAHE-normalised image significantly
+    improves character-edge contrast and raises EasyOCR confidence scores.
+    """
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+    # Strong CLAHE to maximise local contrast
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(4, 4))
+    gray = clahe.apply(gray)
+    # Unsharp mask: sharpen = original + (original - blurred) * amount
+    blurred = cv2.GaussianBlur(gray, (0, 0), sigmaX=1.5)
+    sharpened = cv2.addWeighted(gray, 1.8, blurred, -0.8, 0)
+    # Convert back to BGR so EasyOCR receives a 3-channel image
+    return cv2.cvtColor(sharpened, cv2.COLOR_GRAY2BGR)
 
 
 # ─── MRZ Extraction via PassportEye ──────────────────────────────────────────
@@ -179,7 +210,20 @@ def _normalise_mrz_line(line: str) -> str:
 
 
 def _normalise_td3_line2(line: str) -> str:
-    """Correct OCR look-alikes only at TD3 positions that must be check digits."""
+    """
+    Correct OCR look-alikes in TD3 Line 2 numeric zones.
+
+    Applies digit look-alike substitution across ALL positions that must contain
+    a digit per the ICAO 9303 TD3 layout:
+      [0-9]   document number (+ check digit at 9)
+      [13-19] date of birth  (+ check digit at 19)
+      [21-27] expiry date    (+ check digit at 27)
+      [43]    composite check digit
+
+    Previously this only fixed the four check-digit positions, leaving
+    O/I/S/etc. inside the actual field ranges (e.g. expiry '34O101' instead
+    of '340101'), which caused wrong years and ICAO checksum failures.
+    """
     if len(line) < 44:
         return line
 
@@ -188,8 +232,11 @@ def _normalise_td3_line2(line: str) -> str:
         "S": "5", "G": "6", "B": "8",
     })
     chars = list(line)
-    for index in (9, 19, 27, 43):
-        chars[index] = chars[index].translate(digit_lookalikes)
+    # Numeric zones: doc number (0-9), DOB (13-19), expiry (21-27), composite (43)
+    numeric_ranges = list(range(0, 10)) + list(range(13, 20)) + list(range(21, 28)) + [43]
+    for index in numeric_ranges:
+        if index < len(chars):
+            chars[index] = chars[index].translate(digit_lookalikes)
     return "".join(chars)
 
 
@@ -281,25 +328,42 @@ def _extract_mrz_fallback(img_bgr: np.ndarray) -> tuple[str, str, str]:
 # Module-level reader cache — initialised once, reused on subsequent requests.
 _easyocr_reader = None
 
-def _extract_viz_easyocr(img_bgr: np.ndarray) -> str:
+def _extract_viz_easyocr(img_bgr: np.ndarray) -> tuple[str, list]:
     """
-    Run EasyOCR on the full document image to extract VIZ text.
-    Uses a cached Reader instance to avoid reloading models on every call.
-    Falls back to empty string on import/runtime error.
+    Run EasyOCR on a sharpened version of the document image to extract VIZ text.
+
+    Improvements over the baseline:
+    - Uses _sharpen_for_viz() for better character edge contrast on Indian passports.
+    - Raises confidence threshold to 0.45 to reduce noise tokens.
+    - Sorts detections top-to-bottom then left-to-right to preserve reading order,
+      so label+value pairs (e.g. 'Surname / THAPLIYAL') stay on adjacent lines.
+    - Uses a cached Reader instance to avoid reloading models on every call.
     """
     global _easyocr_reader
     try:
         import easyocr
         if _easyocr_reader is None:
             log.info("Initialising EasyOCR reader (first call, may take a moment)...")
-            _easyocr_reader = easyocr.Reader(["en"], gpu=False, verbose=False)
+            _easyocr_reader = easyocr.Reader(["en"], gpu=True, verbose=False)
 
-        results = _easyocr_reader.readtext(img_bgr, detail=1, paragraph=False)
-        lines = [text for (_bbox, text, _conf) in results if _conf > 0.25]
-        return "\n".join(lines)
+        viz_img = _sharpen_for_viz(img_bgr)
+        results = _easyocr_reader.readtext(viz_img, detail=1, paragraph=False)
+
+        # Filter low-confidence tokens and sort by reading order (top→bottom, left→right)
+        confident = [
+            (bbox, text, conf)
+            for (bbox, text, conf) in results
+            if conf > 0.45 and text.strip()
+        ]
+        # bbox is a list of 4 [x,y] points; use the top-left y as primary sort key
+        confident.sort(key=lambda item: (int(item[0][0][1] / 15), int(item[0][0][0])))
+
+        lines = [text for (_bbox, text, _conf) in confident]
+        bboxes = [bbox for (bbox, _text, _conf) in confident]
+        return "\n".join(lines), bboxes
     except Exception as exc:
         log.warning("EasyOCR VIZ extraction failed: %s", exc)
-        return ""
+        return "", []
 
 
 # ─── VIZ Fallback via PyTesseract ────────────────────────────────────────────
@@ -443,33 +507,71 @@ def run_ocr(raw_bytes: bytes, content_type: str = "image/jpeg") -> OCRResult:
         result.errors.append("MRZ not detected by PassportEye.")
 
     # ── Step 2: VIZ via EasyOCR (always — retained for display and parity checks)
-    viz = _extract_viz_easyocr(img_bgr)
-    if not viz:
+    result.viz_text, result.text_bboxes = _extract_viz_easyocr(img_bgr)
+    if not result.viz_text:
         log.info("EasyOCR failed, falling back to Tesseract for VIZ.")
-        viz = _extract_viz_tesseract(gray)
+        result.viz_text = _extract_viz_tesseract(gray)
         result.ocr_engine_used = "tesseract-fallback"
     else:
         result.ocr_engine_used = "easyocr"
-    result.viz_text = viz
 
-    # ── Step 1b: Non-MRZ Structured Extraction (configured vision provider) ─
-    # Only triggered when PassportEye found no MRZ (Aadhaar, PAN, Voter ID, DL, etc.)
-    if not result.mrz_detected:
-        provider = STRUCTURED_OCR_PROVIDER
-        if provider == "gemini":
-            from modules.gemini_ocr import run_gemini_ocr
-            structured, provider_error = run_gemini_ocr(raw_bytes, content_type, result.viz_text)
-        elif provider == "ollama":
-            from modules.ollama_ocr import run_ollama_ocr
-            structured, provider_error = run_ollama_ocr(raw_bytes, content_type, result.viz_text)
-        else:
-            structured = {}
-            provider_error = (
-                f"Unsupported STRUCTURED_OCR_PROVIDER '{provider}'. "
-                "Use 'gemini' or 'ollama'."
-            )
+    # ── Step 2b: Cross-Correction of MRZ Document Number via VIZ ─────────────
+    # MRZ text is small and often suffers from look-alike errors (e.g., 'S' -> '8').
+    # Some look-alikes cause ICAO checksum collisions and pass unnoticed. VIZ text
+    # is larger and more reliable for these characters.
+    if result.mrz_detected and result.doc_number and result.viz_text:
+        import difflib
+        mrz_dn = result.doc_number
+        best_match = None
+        best_ratio = 0.85  # requires at least ~7/8 chars to match exactly
+        
+        # Scan VIZ tokens for an alphanumeric string of the exact same length
+        for v_tok in result.viz_text.upper().split():
+            v_tok = re.sub(r"[^A-Z0-9]", "", v_tok)
+            if len(v_tok) == len(mrz_dn):
+                ratio = difflib.SequenceMatcher(None, mrz_dn, v_tok).ratio()
+                if ratio > best_ratio:
+                    best_ratio = ratio
+                    best_match = v_tok
+                    
+        if best_match and best_match != mrz_dn:
+            log.info("Auto-correcting MRZ doc_number '%s' -> '%s' via VIZ (ratio %.2f).", 
+                     mrz_dn, best_match, best_ratio)
+            result.doc_number = best_match
 
-        if structured:
+    # ── Step 1b: Structured Extraction via Vision LLM (Always-On) ───────────
+    # We run Gemini/Ollama on all documents now. 
+    # - If MRZ is present, it acts as a shadow cross-check against MRZ.
+    # - If MRZ is absent, it acts as the primary data extractor.
+    provider = STRUCTURED_OCR_PROVIDER
+    if provider == "gemini":
+        from modules.gemini_ocr import run_gemini_ocr
+        structured, provider_error = run_gemini_ocr(raw_bytes, content_type, result.viz_text)
+    elif provider == "ollama":
+        from modules.ollama_ocr import run_ollama_ocr
+        structured, provider_error = run_ollama_ocr(raw_bytes, content_type, result.viz_text)
+    else:
+        structured = {}
+        provider_error = (
+            f"Unsupported STRUCTURED_OCR_PROVIDER '{provider}'. "
+            "Use 'gemini' or 'ollama'."
+        )
+
+    if structured:
+        # Save the raw dictionary for shadow mode forensics
+        result.vision_extracted_data = structured
+        
+        # Always apply gatekeeping flags
+        result.is_government_id = structured.get("is_government_id", True)
+        result.id_type         = structured.get("id_type", "")
+        result.id_reasoning    = structured.get("reasoning", "")
+        
+        # Capture tampering flags from LLM
+        result.vlm_tamper_detected = structured.get("visual_tampering_detected", False)
+        result.vlm_tamper_reason = structured.get("tampering_reasoning", "")
+        
+        # If MRZ is NOT detected, the LLM fields become the primary data source
+        if not result.mrz_detected:
             result.surname         = structured.get("surname", "")
             result.given_names     = structured.get("given_names", "")
             result.doc_number      = structured.get("doc_number", "")
@@ -480,13 +582,44 @@ def run_ocr(raw_bytes: bytes, content_type: str = "image/jpeg") -> OCRResult:
             result.nationality     = structured.get("nationality", "IND")
             result.issuing_country = structured.get("issuing_country", "IND")
             result.address         = structured.get("address", "")
-            # Tag the engine used
             result.ocr_engine_used = structured.get("engine", result.ocr_engine_used)
             log.info("Non-MRZ extraction complete via '%s': name='%s %s' doc_number='%s'",
                      result.ocr_engine_used, result.given_names, result.surname,
                      result.doc_number)
         else:
-            result.ocr_engine_used = provider
-            result.errors.append(provider_error or f"{provider.title()} did not extract structured fields.")
+            log.info("Shadow extraction complete via '%s' (stored in vision_extracted_data).", 
+                     structured.get("engine", provider))
+                     
+            # MRZ name fields don't have checksums and are noisy (e.g. padding read as S or K).
+            # We auto-correct them using the clean LLM extraction if they are highly similar.
+            import difflib
+            def _is_cleaner_match(mrz_val: str, llm_val: str) -> bool:
+                if not mrz_val or not llm_val:
+                    return False
+                mrz_upper = mrz_val.upper()
+                llm_upper = llm_val.upper()
+                if llm_upper in mrz_upper:
+                    return True
+                if difflib.SequenceMatcher(None, mrz_upper, llm_upper).ratio() > 0.7:
+                    return True
+                return False
+
+            llm_given = structured.get("given_names", "")
+            if _is_cleaner_match(result.given_names, llm_given):
+                log.info("Auto-correcting MRZ given_names '%s' -> '%s' via LLM.", result.given_names, llm_given)
+                result.given_names = llm_given.upper()
+                
+            llm_sur = structured.get("surname", "")
+            if _is_cleaner_match(result.surname, llm_sur):
+                log.info("Auto-correcting MRZ surname '%s' -> '%s' via LLM.", result.surname, llm_sur)
+                result.surname = llm_sur.upper()
+                
+            llm_mrz = structured.get("mrz_raw", "")
+            if llm_mrz and "<<" in llm_mrz:
+                log.info("Auto-correcting MRZ raw text via LLM.")
+                result.mrz_raw = llm_mrz.strip()
+                
+    else:
+        result.errors.append(f"Vision structured extraction failed: {provider_error}")
 
     return result

@@ -119,6 +119,50 @@ async def screen_document(
     log.info("  [M1] Running OCR & MRZ extraction...")
     ocr = run_ocr(doc_bytes, content_type)
 
+    # ── Gatekeeper: Reject Non-Government IDs ─────────────────────────────────
+    if not ocr.is_government_id:
+        elapsed = round(time.perf_counter() - t_start, 3)
+        flags = [f"INVALID_DOCUMENT_TYPE: Detected {ocr.id_type}. {ocr.id_reasoning}"]
+        flags.extend(ocr.errors)
+        log.warning("◀ Screening halted — Non-government ID detected (type='%s')", ocr.id_type)
+        return JSONResponse(content={
+            "status": "success",
+            "threat_level": "RED",
+            "composite_risk_score": 100,
+            "processing_time_s": elapsed,
+            "flags": flags,
+            "extracted_data": {
+                "name": "",
+                "surname": "",
+                "given_names": "",
+                "doc_number": "",
+                "doc_type": ocr.id_type or "UNKNOWN",
+                "nationality": "",
+                "dob": "",
+                "expiry": "",
+                "expiry_parsed": "",
+                "sex": "",
+                "issuing_country": "",
+                "address": "",
+                "mrz_detected": False,
+                "mrz_raw": "",
+                "viz_text": ocr.viz_text[:500] if ocr.viz_text else "",
+                "ocr_engine": ocr.ocr_engine_used,
+                "checksums": {
+                    "doc_number_ok": False,
+                    "dob_ok": False,
+                    "expiry_ok": False,
+                    "composite_ok": False,
+                    "any_failed": True,
+                },
+                "document_expired": False,
+                "viz_mrz_mismatch": False,
+            },
+            "forensic_analysis": {},
+            "biometric_verification": {},
+        })
+
+
     # ── Module 2: Validation ──────────────────────────────────────────────────
     log.info("  [M2] Running document validation...")
     val = run_validation(ocr)
@@ -126,17 +170,14 @@ async def screen_document(
     # ── Module 3: Forensics ───────────────────────────────────────────────────
     log.info("  [M3] Running forensic analysis...")
     # Retrieve vision fields from OCR result for shadow-mode cross-check.
-    # These are only populated when a non-MRZ document was processed by Gemini/Ollama.
-    vision_fields: dict = {}
+    vision_fields: dict = ocr.vision_extracted_data
     if FORENSICS_SHADOW_MODE and not ocr.mrz_detected and ocr.doc_number:
-        # The structured fields already merged into ocr are also the vision fields.
-        # We compare the raw vision output against what PassportEye would have found
-        # (not applicable for non-MRZ docs, so this is MRZ-vs-vision on passports).
         # For non-MRZ docs both sources agree by construction; cross-check is a no-op.
         pass
     forensics = run_forensics(
         doc_bytes, content_type, ocr.doc_type, ocr.doc_number,
         vision_fields=vision_fields,
+        text_bboxes=ocr.text_bboxes
     )
 
     # ── Shadow: Field-Vision Cross-check (MRZ docs with Gemini corroboration) ─
@@ -227,6 +268,9 @@ async def screen_document(
             "qr_payload_sha256": forensics.qr_payload_sha256,
             "qr_data_mismatch": forensics.qr_data_mismatch,
             "region_anomalies": forensics.region_anomalies,
+            "dynamic_region_anomalies": forensics.dynamic_region_anomalies,
+            "vlm_tamper_detected": forensics.vlm_tamper_detected,
+            "vlm_tamper_reason": forensics.vlm_tamper_reason,
             "independent_signal_count": forensics.independent_signal_count,
             "tamper_evidence_detected": forensics.tamper_evidence_detected,
             "forensic_confidence": forensics.forensic_confidence,

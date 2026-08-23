@@ -24,6 +24,10 @@ Carefully examine this identity document image and extract ALL visible text fiel
 Return ONLY a valid JSON object — no markdown fences, no explanation — with exactly these keys:
 
 {
+  "is_government_id": "boolean — true if it is a formally recognized government-issued ID (e.g. Passport, National ID, Voter ID, PAN, Aadhaar, Driving Licence), false if it is a non-government/invalid ID (e.g. corporate badge, school ID, gym pass)",
+  "id_type": "string — e.g. 'Corporate ID', 'Voter ID', 'Aadhaar', 'Unknown'",
+  "confidence_score": "float 0.0 to 1.0",
+  "reasoning": "string — brief explanation of why it is or isn't a government ID",
   "doc_type": "concise UPPER_SNAKE_CASE document type, e.g. AADHAAR, PAN, VOTER_ID, DRIVING_LICENCE, PASSPORT, VISA, NATIONAL_ID, or UNKNOWN",
   "surname": "family/last name only (string)",
   "given_names": "first + middle names (string)",
@@ -34,6 +38,9 @@ Return ONLY a valid JSON object — no markdown fences, no explanation — with 
   "nationality": "3-letter ISO country code, e.g. IND",
   "issuing_country": "3-letter ISO country code, e.g. IND",
   "address": "full address text if visible, else empty string",
+  "mrz_raw": "Array of strings, containing the 2 or 3 lines of the Machine Readable Zone (MRZ) at the bottom if present. Pay strict attention to the padding characters '<'. If no MRZ, return empty array.",
+  "visual_tampering_detected": "boolean. Set to true if the document appears digitally altered (e.g. text looks glued on, mismatched fonts, blurred background behind text, misaligned text, etc).",
+  "tampering_reasoning": "string. If visual_tampering_detected is true, briefly describe the visual anomaly.",
   "engine": "gemini"
 }
 
@@ -57,9 +64,27 @@ def _normalise_response(data: dict) -> dict:
     """Return only the API fields in the format expected by the screening API."""
     fields = (
         "doc_type", "surname", "given_names", "doc_number", "dob", "sex",
-        "expiry", "nationality", "issuing_country", "address",
+        "expiry", "nationality", "issuing_country", "address", "tampering_reasoning"
     )
     cleaned = {field: str(data.get(field, "") or "").strip() for field in fields}
+    
+    # Handle mrz_raw which can be a list of strings
+    mrz_data = data.get("mrz_raw")
+    if isinstance(mrz_data, list):
+        cleaned["mrz_raw"] = "\n".join(str(line) for line in mrz_data if line).strip()
+    else:
+        cleaned["mrz_raw"] = str(mrz_data or "").strip()
+    
+    # Gatekeeping fields
+    cleaned["is_government_id"] = bool(data.get("is_government_id", True))
+    cleaned["id_type"] = str(data.get("id_type", "")).strip()
+    cleaned["visual_tampering_detected"] = bool(data.get("visual_tampering_detected", False))
+    try:
+        cleaned["confidence_score"] = float(data.get("confidence_score", 1.0))
+    except (ValueError, TypeError):
+        cleaned["confidence_score"] = 1.0
+    cleaned["reasoning"] = str(data.get("reasoning", "")).strip()
+
     cleaned["doc_type"] = re.sub(r"[^A-Z0-9_]+", "_", cleaned["doc_type"].upper()).strip("_")
     cleaned["doc_type"] = cleaned["doc_type"] or "UNKNOWN"
 

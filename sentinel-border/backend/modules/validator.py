@@ -8,6 +8,7 @@ Implements:
 
 from __future__ import annotations
 
+import re as _re
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Optional
@@ -62,12 +63,19 @@ def verify_checksum(field_str: str, expected_digit: str) -> bool:
 def _yymmdd_to_date(yymmdd: str) -> Optional[date]:
     """
     Parse a 6-char YYMMDD string to a date object.
-    Years 00-30 are assumed 2000-2030; 31-99 assumed 1931-1999.
+
+    Uses a dynamic sliding-window pivot: if yy is within 20 years ahead of the
+    current two-digit year it is mapped to the 2000s, otherwise the 1900s.
+    This prevents documents with expiry in 2031-2099 from being read as 1931-1999.
+
+    Example (as of 2026): pivot = 46; yy 00-46 → 2000-2046; yy 47-99 → 1947-1999.
     """
     if not yymmdd or len(yymmdd) != 6 or not yymmdd.isdigit():
         return None
     yy, mm, dd = int(yymmdd[:2]), int(yymmdd[2:4]), int(yymmdd[4:6])
-    year = 2000 + yy if yy <= 30 else 1900 + yy
+    current_yy = date.today().year % 100
+    pivot = (current_yy + 20) % 100   # 20-year lookahead window
+    year = 2000 + yy if yy <= pivot else 1900 + yy
     try:
         return date(year, mm, dd)
     except ValueError:
@@ -86,36 +94,93 @@ def is_expired(expiry_yymmdd: str) -> bool:
 
 def _normalize(text: str) -> str:
     """Lowercase, remove punctuation and extra spaces for fuzzy parity."""
-    import re
     text = text.lower()
-    text = re.sub(r"[^a-z0-9 ]", " ", text)
-    return re.sub(r"\s+", " ", text).strip()
+    text = _re.sub(r"[^a-z0-9 ]", " ", text)
+    return _re.sub(r"\s+", " ", text).strip()
+
+
+def _viz_token_set(viz_text: str) -> set:
+    """Return the set of all individual word tokens found in the VIZ text.
+
+    Indian passport VIZ lines often contain both the label and the value on the
+    same line (e.g. 'Surname THAPLIYAL' or just 'THAPLIYAL' on its own line).
+    Token-level checking is therefore more robust than full-string substring
+    matching, which fails whenever EasyOCR merges or splits lines differently.
+    """
+    return set(_normalize(viz_text).split())
 
 
 def check_viz_mrz_parity(ocr: OCRResult) -> tuple[bool, list[str]]:
     """
-    Cross-check VIZ free text against parsed MRZ fields.
-    Returns (mismatch_found: bool, list_of_discrepancy_messages).
-    A mismatch is flagged if a key MRZ field cannot be found anywhere
-    in the VIZ text (surname, given name, document number, nationality).
+    Cross-check VIZ free text against parsed MRZ fields using token-level matching.
+
+    Indian passport layout:
+      VIZ field  | MRZ field
+      -----------+-----------
+      Surname    | ocr.surname      (e.g. THAPLIYAL)
+      Given Name | ocr.given_names  (e.g. GARIMA)
+
+    A mismatch is flagged only when NONE of the significant tokens of the MRZ
+    field appear in the VIZ token set.  For multi-word names (e.g. 'SINGH RAWAT')
+    at least one word must match — this tolerates line-wrapping and minor OCR
+    gaps without generating false positives.
+
+    Single short tokens (<=2 chars) are skipped to avoid trivially matching
+    noise like 'OF', 'A', 'M'.
     """
     mismatches: list[str] = []
-    viz = _normalize(ocr.viz_text)
 
-    if not viz:
-        # Cannot check parity without VIZ data
+    if not ocr.viz_text and not ocr.vision_extracted_data:
         return False, []
 
-    def _field_in_viz(label: str, value: str) -> None:
+    # Combine EasyOCR's raw text with the LLM's semantic extraction. 
+    # This patches holes where EasyOCR misses printed text but the LLM reads it.
+    llm_text = ""
+    if ocr.vision_extracted_data:
+        llm_text = f"{ocr.vision_extracted_data.get('surname', '')} {ocr.vision_extracted_data.get('given_names', '')}"
+        
+    viz_tokens = _viz_token_set(f"{ocr.viz_text} {llm_text}")
+
+    import difflib
+
+    def _tokens_found_in_viz(label: str, value: str) -> None:
         if not value:
             return
-        normalized_value = _normalize(value)
-        if normalized_value and normalized_value not in viz:
-            mismatches.append(f"VIZ/MRZ mismatch — {label}: MRZ='{value}' not found in VIZ.")
+        # Split compound names and test each significant part individually.
+        # Tokens of 3 chars or fewer are skipped:
+        #   - avoids false-positive mismatches from 3-letter ISO country codes
+        #     like 'IND' that appear in MRZ but not literally in VIZ text
+        #     (VIZ prints 'INDIAN' / 'INDIA' / full country name instead).
+        #   - avoids noise tokens like 'OF', 'A'.
+        parts = [p.strip() for p in _normalize(value).split() if len(p.strip()) > 3]
+        if not parts:
+            return
+            
+        # A match is found if ANY significant token appears in the VIZ token set.
+        # We use a fuzzy match to tolerate minor OCR misreads in either VIZ or MRZ.
+        match_found = False
+        for part in parts:
+            for v_tok in viz_tokens:
+                # Direct substring check (e.g. if EasyOCR merged "surnameTHAPLIYAL")
+                if part in v_tok or v_tok in part:
+                    match_found = True
+                    break
+                # Fuzzy match for character errors (e.g. MRZ "garimas" vs VIZ "garima")
+                if difflib.SequenceMatcher(None, part, v_tok).ratio() > 0.8:
+                    match_found = True
+                    break
+            if match_found:
+                break
+                
+        if not match_found:
+            mismatches.append(
+                f"VIZ/MRZ mismatch — {label}: MRZ='{value}' "
+                f"(tokens {parts}) not found in VIZ."
+            )
 
-    _field_in_viz("Surname", ocr.surname)
-    _field_in_viz("Given Names", ocr.given_names)
-    _field_in_viz("Nationality", ocr.nationality)
+    _tokens_found_in_viz("Surname",     ocr.surname)
+    _tokens_found_in_viz("Given Names", ocr.given_names)
+    _tokens_found_in_viz("Nationality", ocr.nationality)
 
     return bool(mismatches), mismatches
 

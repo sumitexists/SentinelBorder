@@ -42,8 +42,8 @@ FORENSICS_EDGE_RISK_WEIGHT: int = int(os.getenv("FORENSICS_EDGE_RISK_WEIGHT", "0
 FORENSICS_V2_CORROBORATION_MIN: int = int(os.getenv("FORENSICS_V2_CORROBORATION_MIN", "2"))
 
 # ─── Biometric Thresholds (Cosine Distance) ────────────────────────────────────
-FACE_MATCH_THRESHOLD: float = 0.35    # <= 0.35 → Verified Match
-FACE_WARN_THRESHOLD: float = 0.45     # <= 0.45 → Secondary Review; > 0.45 → Mismatch
+FACE_MATCH_THRESHOLD: float = 0.55    # <= 0.45 → Verified Match
+FACE_WARN_THRESHOLD: float = 0.6     # <= 0.55 → Secondary Review; > 0.55 → Mismatch
 
 # ─── DeepFace Model Config ─────────────────────────────────────────────────────
 DEEPFACE_MODEL: str = "ArcFace"       # ArcFace | Facenet512

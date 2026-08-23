@@ -40,10 +40,13 @@ async function submitScreening(docFile, liveBlob) {
 // ─── Helper: format YYMMDD → readable date ───────────────────────────────────
 function formatDate(yymmdd) {
   if (!yymmdd || yymmdd.length !== 6) return yymmdd || '—';
-  const yy = parseInt(yymmdd.slice(0, 2));
+  const yy = parseInt(yymmdd.slice(0, 2), 10);
   const mm = yymmdd.slice(2, 4);
   const dd = yymmdd.slice(4, 6);
-  const year = yy <= 30 ? 2000 + yy : 1900 + yy;
+  // Dynamic sliding-window pivot: 20-year lookahead, matching backend logic.
+  // e.g. in 2026: pivot = 46; yy 00-46 → 2000-2046; yy 47-99 → 1947-1999.
+  const pivot = (new Date().getFullYear() % 100 + 20) % 100;
+  const year = yy <= pivot ? 2000 + yy : 1900 + yy;
   return `${dd}/${mm}/${year}`;
 }
 

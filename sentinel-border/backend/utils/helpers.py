@@ -7,10 +7,14 @@ import base64
 import io
 import logging
 import sys
+import warnings
 from typing import Optional
 
 import numpy as np
 from PIL import Image
+
+# Suppress noisy third-party warnings (e.g. PyTorch quantization, skimage deprecations)
+warnings.simplefilter("ignore")
 
 # ─── Logger ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
