@@ -94,3 +94,20 @@ GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.7-flash")  # user-specif
 # Ollama Vision (local-only)
 OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
 OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5vl:7b")
+
+# ─── Passport Registry Module ──────────────────────────────────────────────────
+# Set REGISTRY_ENABLED=false to disable the registry lookup step entirely.
+REGISTRY_ENABLED: bool = _env_bool("REGISTRY_ENABLED", True)
+# Path to the SQLite database file (auto-created on first startup).
+REGISTRY_DB_PATH: str = os.getenv(
+    "REGISTRY_DB_PATH",
+    str(Path(__file__).parent / "data" / "registry.db"),
+)
+# Directory where registry face photos are stored.
+REGISTRY_PHOTOS_DIR: str = os.getenv(
+    "REGISTRY_PHOTOS_DIR",
+    str(Path(__file__).parent / "data" / "registry_photos"),
+)
+# Weight added to composite score when a second active passport is confirmed
+# for the same identity (POSSIBLE_DUPLICATE_ACTIVE_PASSPORT).
+WEIGHT_DUPLICATE_PASSPORT: int = int(os.getenv("WEIGHT_DUPLICATE_PASSPORT", "70"))

@@ -158,7 +158,8 @@ btnRun.addEventListener('click', async () => {
     [800,  'MODULE 2: ICAO CHECKSUM VALIDATION...'],
     [1200, 'MODULE 3: FORENSIC ELA ANALYSIS...'],
     [1600, 'MODULE 4: BIOMETRIC FACE MATCHING...'],
-    [2000, 'COMPUTING COMPOSITE THREAT SCORE...'],
+    [2000, 'MODULE 5: REGISTRY VERIFICATION...'],
+    [2400, 'COMPUTING COMPOSITE THREAT SCORE...'],
   ];
 
   // Animate loading steps

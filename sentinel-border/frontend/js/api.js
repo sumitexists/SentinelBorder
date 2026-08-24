@@ -194,8 +194,9 @@ function renderResult(data) {
   // ── Biometric ─────────────────────────────────────────────────────────
   const bio = data.biometric_verification || {};
 
-  const faceDoc  = document.getElementById('face-doc');
-  const faceLive = document.getElementById('face-live');
+  const faceDoc      = document.getElementById('face-doc');
+  const faceLive     = document.getElementById('face-live');
+  const faceRegistry = document.getElementById('face-registry');
 
   if (bio.doc_face_crop_b64 && faceDoc) {
     faceDoc.src = `data:image/jpeg;base64,${bio.doc_face_crop_b64}`;
@@ -226,6 +227,68 @@ function renderResult(data) {
     const s = statusMap[bio.status] || { label: bio.status, cls: '' };
     bioStatusVal.textContent = s.label;
     bioStatusVal.className   = `stat-val ${s.cls}`;
+  }
+
+  // ── Registry Verification ───────────────────────────────────────────
+  const rv = data.registry_verification || {};
+  const dup = data.duplicate_passport_check || {};
+
+  // Registry face crop
+  if (rv.registry_face_crop_b64 && faceRegistry) {
+    faceRegistry.src = `data:image/jpeg;base64,${rv.registry_face_crop_b64}`;
+    faceRegistry.style.display = 'block';
+  }
+
+  // Registry record found badge
+  const regRecordRow = document.getElementById('reg-record-row');
+  const regRecordVal = document.getElementById('reg-record-val');
+  if (regRecordRow && regRecordVal && rv.registry_status) {
+    regRecordRow.style.display = 'flex';
+    const statusMap = {
+      VERIFIED:           { label: 'FOUND ✓',        cls: 'ok' },
+      FACE_MISMATCH:      { label: 'MISMATCH ✗',     cls: 'fail' },
+      NOT_IN_REGISTRY:    { label: 'NOT FOUND ✗',   cls: 'fail' },
+      NO_EMBEDDING:       { label: 'NO PHOTO ⚡',    cls: 'warn' },
+      SKIPPED:            { label: 'SKIPPED',          cls: '' },
+    };
+    const s = statusMap[rv.registry_status] || { label: rv.registry_status, cls: '' };
+    regRecordVal.textContent = s.label;
+    regRecordVal.className   = `stat-val ${s.cls}`;
+  }
+
+  // Pairwise distances
+  function _showRegDist(rowId, valId, pairObj) {
+    const row = document.getElementById(rowId);
+    const val = document.getElementById(valId);
+    if (!row || !val || !pairObj) return;
+    if (pairObj.distance === null || pairObj.distance === undefined) return;
+    row.style.display = 'flex';
+    const d = pairObj.distance.toFixed(4);
+    const matched = pairObj.match;
+    val.textContent = `${d} (${matched ? 'MATCH' : 'FAIL'})`;
+    val.className   = `stat-val ${matched ? 'ok' : 'fail'}`;
+  }
+  _showRegDist('reg-doc-reg-row', 'reg-doc-reg-val', rv.document_to_registry);
+  _showRegDist('reg-reg-live-row', 'reg-reg-live-val', rv.registry_to_live);
+
+  // Registry overall status
+  const regStatusRow = document.getElementById('reg-status-row');
+  const regStatusVal = document.getElementById('reg-status-val');
+  if (regStatusRow && regStatusVal && rv.registry_status && rv.registry_status !== 'SKIPPED') {
+    regStatusRow.style.display = 'flex';
+    const isVerified = rv.overall_verified;
+    regStatusVal.textContent = isVerified ? 'THREE-WAY VERIFIED ✓' : 'VERIFICATION FAILED ✗';
+    regStatusVal.className   = `stat-val ${isVerified ? 'ok' : 'fail'}`;
+  }
+
+  // Duplicate passport alert
+  const dupAlert = document.getElementById('dup-alert');
+  const dupText  = document.getElementById('dup-alert-text');
+  if (dupAlert && dupText && dup.duplicate_found) {
+    const nums = (dup.duplicate_active_passports || [])
+      .map(p => `${p.passport_number} (${p.issuing_country})`).join(', ');
+    dupText.textContent = `DUPLICATE ACTIVE PASSPORT DETECTED: ${nums}`;
+    dupAlert.style.display = 'flex';
   }
 
   // ── Flags ─────────────────────────────────────────────────────────────

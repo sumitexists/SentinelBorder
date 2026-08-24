@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description"
+    content="SentinelBorder — Passport Registry Admin Panel. Register and manage official passport records." />
+  <title>SentinelBorder | Passport Registry</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    /* ── Registry-page specific styles ── */
+    #reg-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      padding: 16px 24px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    @media (max-width: 900px) { #reg-grid { grid-template-columns: 1fr; } }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .form-row.full { grid-template-columns: 1fr; }
+
+    .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .form-label {
+      font-size: 0.6rem;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .form-input, .form-select {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-bright);
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      padding: 7px 10px;
+      outline: none;
+      transition: var(--transition);
+      width: 100%;
+    }
+    .form-input:focus, .form-select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(0,240,252,0.12);
+    }
+    .form-input::placeholder { color: var(--text-muted); }
+    .form-select option { background: var(--surface); }
+
+    /* Photo upload zone */
+    #photo-drop {
+      border: 2px dashed var(--border-glow);
+      border-radius: var(--radius);
+      padding: 18px;
+      text-align: center;
+      cursor: pointer;
+      transition: var(--transition);
+      min-height: 110px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    #photo-drop:hover { border-color: var(--accent); background: rgba(0,240,252,0.04); }
+    #photo-drop.drag-over { border-color: var(--accent); background: rgba(0,240,252,0.07); }
+    #photo-file-input { display: none; }
+    #photo-preview {
+      width: 100px;
+      height: 120px;
+      object-fit: cover;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      display: none;
+      margin: 0 auto;
+    }
+
+    /* Records table */
+    .reg-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.67rem;
+    }
+    .reg-table th {
+      text-align: left;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 0.58rem;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      background: var(--surface-2);
+    }
+    .reg-table td {
+      padding: 7px 10px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-primary);
+      vertical-align: top;
+      word-break: break-all;
+    }
+    .reg-table tr:hover td { background: rgba(0,240,252,0.03); }
+    .badge-active   { color: var(--green); }
+    .badge-expired  { color: var(--yellow); }
+    .badge-revoked  { color: var(--red); }
+    .emb-yes { color: var(--green); font-weight: 600; }
+    .emb-no  { color: var(--text-muted); }
+
+    /* Verify panel */
+    .verify-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+    }
+    .verify-result {
+      margin-top: 10px;
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      font-size: 0.72rem;
+      display: none;
+    }
+    .verify-result.found    { background: var(--green-dim); border: 1px solid var(--green); color: var(--green); }
+    .verify-result.not-found{ background: var(--red-dim);   border: 1px solid var(--red);   color: var(--red);   }
+
+    /* Nav link back */
+    .nav-back {
+      font-size: 0.68rem;
+      color: var(--accent);
+      text-decoration: none;
+      letter-spacing: 1px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border: 1px solid var(--accent-dim);
+      border-radius: var(--radius);
+      transition: var(--transition);
+    }
+    .nav-back:hover { background: rgba(0,240,252,0.08); }
+
+    /* Success/error toast colours are inherited from app.js */
+    #reg-result {
+      margin-top: 10px;
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      font-size: 0.72rem;
+      display: none;
+    }
+    #reg-result.ok    { background: var(--green-dim); border: 1px solid var(--green); color: var(--green); }
+    #reg-result.error { background: var(--red-dim);   border: 1px solid var(--red);   color: var(--red);   }
+    #reg-result.warn  { background: var(--yellow-dim); border: 1px solid var(--yellow); color: var(--yellow); }
+  </style>
+</head>
+
+<body>
+
+  <!-- ════════════════════════ HEADER ════════════════════════ -->
+  <header id="header" role="banner">
+    <div class="logo">
+      <div class="logo-icon" aria-hidden="true">🛡</div>
+      <div>
+        <div class="logo-text">Passport Registry</div>
+        <div class="logo-sub">ADMIN PANEL — SENTINELBORDER · SIH 26188 · MHA / SSB</div>
+      </div>
+    </div>
+    <div id="status-bar" aria-live="polite">
+      <div id="system-status">REGISTRY ONLINE</div>
+      <a href="/" class="nav-back">← SCREENING</a>
+    </div>
+  </header>
+
+  <!-- ════════════════════════ MAIN GRID ════════════════════════ -->
+  <main id="reg-grid" role="main">
+
+    <!-- ═══ PANEL: Registration Form ═══ -->
+    <section class="panel" id="panel-form" aria-labelledby="form-title">
+      <div class="panel-header">
+        <span class="panel-icon" aria-hidden="true">📋</span>
+        <span class="panel-title" id="form-title">Register Passport</span>
+        <span class="panel-num">ADMIN · CREATE</span>
+      </div>
+      <div class="panel-body">
+
+        <div class="section-label">▶ PASSPORT IDENTITY FIELDS</div>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label class="form-label" for="f-passport-number">Passport Number *</label>
+            <input class="form-input" id="f-passport-number" type="text" placeholder="e.g. A1234567" autocomplete="off" />
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="f-issuing-country">Issuing Country Code *</label>
+            <input class="form-input" id="f-issuing-country" type="text" placeholder="e.g. IND" maxlength="3" autocomplete="off" />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label class="form-label" for="f-surname">Surname *</label>
+            <input class="form-input" id="f-surname" type="text" placeholder="SMITH" autocomplete="off" />
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="f-given-names">Given Names *</label>
+            <input class="form-input" id="f-given-names" type="text" placeholder="JOHN ALAN" autocomplete="off" />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label class="form-label" for="f-dob">Date of Birth * (YYMMDD)</label>
+            <input class="form-input" id="f-dob" type="text" placeholder="850101" maxlength="6" autocomplete="off" />
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="f-nationality">Nationality *</label>
+            <input class="form-input" id="f-nationality" type="text" placeholder="IND" maxlength="3" autocomplete="off" />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label class="form-label" for="f-issue-date">Issue Date (YYYYMMDD)</label>
+            <input class="form-input" id="f-issue-date" type="text" placeholder="20200101" maxlength="8" autocomplete="off" />
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="f-expiry-date">Expiry Date (YYYYMMDD)</label>
+            <input class="form-input" id="f-expiry-date" type="text" placeholder="20301231" maxlength="8" autocomplete="off" />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label class="form-label" for="f-status">Passport Status</label>
+            <select class="form-select" id="f-status">
+              <option value="active">Active</option>
+              <option value="expired">Expired</option>
+              <option value="revoked">Revoked</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="f-person-id">Person ID (leave blank to auto-generate)</label>
+            <input class="form-input" id="f-person-id" type="text" placeholder="auto-generated UUID" autocomplete="off" />
+          </div>
+        </div>
+
+        <div class="section-divider"></div>
+        <div class="section-label">▶ OFFICIAL REGISTRY PHOTO (optional — required for three-way biometric)</div>
+
+        <div id="photo-drop" role="button" tabindex="0" aria-label="Drop registry photo here or click to upload">
+          <div style="font-size:1.5rem">📷</div>
+          <div style="font-size:0.7rem;color:var(--text-muted)">DROP PHOTO HERE OR CLICK</div>
+          <div style="font-size:0.62rem;color:var(--text-muted);opacity:0.6">JPG · PNG — one clear face required</div>
+          <input type="file" id="photo-file-input" accept="image/jpeg,image/png" />
+        </div>
+        <img id="photo-preview" alt="Selected registry photo preview" />
+        <div id="photo-filename" style="font-size:0.65rem;color:var(--accent);display:none;word-break:break-all;"></div>
+
+        <button class="btn btn-primary" id="btn-register" aria-label="Register passport">
+          ⟁ REGISTER PASSPORT
+        </button>
+
+        <div id="reg-result" role="alert" aria-live="polite"></div>
+
+      </div>
+    </section><!-- /panel-form -->
+
+    <!-- ═══ PANEL: Records + Verify ═══ -->
+    <section class="panel" id="panel-records" aria-labelledby="records-title">
+      <div class="panel-header">
+        <span class="panel-icon" aria-hidden="true">🗄</span>
+        <span class="panel-title" id="records-title">Registry Records</span>
+        <span class="panel-num" id="records-count">— RECORDS</span>
+      </div>
+      <div class="panel-body">
+
+        <!-- Verify sub-panel -->
+        <div class="section-label">▶ QUICK VERIFY</div>
+        <div class="verify-row">
+          <div class="form-field" style="flex:1">
+            <label class="form-label" for="v-passport-number">Passport Number</label>
+            <input class="form-input" id="v-passport-number" type="text" placeholder="A1234567" autocomplete="off" />
+          </div>
+          <div class="form-field" style="flex:0 0 90px">
+            <label class="form-label" for="v-country">Country</label>
+            <input class="form-input" id="v-country" type="text" placeholder="IND" maxlength="3" autocomplete="off" />
+          </div>
+          <button class="btn" id="btn-verify" style="flex:0 0 auto;align-self:flex-end;padding:7px 14px" aria-label="Verify passport">VERIFY</button>
+        </div>
+        <div id="verify-result" class="verify-result" role="status" aria-live="polite"></div>
+
+        <div class="section-divider"></div>
+
+        <!-- Records table -->
+        <div class="section-label">▶ ALL REGISTERED PASSPORTS</div>
+        <div id="records-idle" class="idle-placeholder" style="font-size:0.65rem">
+          LOADING REGISTRY...
+        </div>
+        <div id="records-container" style="overflow-x:auto;display:none">
+          <table class="reg-table" id="records-table" aria-label="Registered passports">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Passport No.</th>
+                <th>Country</th>
+                <th>Surname</th>
+                <th>Given Names</th>
+                <th>DOB</th>
+                <th>Expiry</th>
+                <th>Status</th>
+                <th>Emb?</th>
+                <th>Person ID</th>
+              </tr>
+            </thead>
+            <tbody id="records-tbody"></tbody>
+          </table>
+        </div>
+        <button class="btn" id="btn-refresh" aria-label="Refresh registry records" style="margin-top:8px">↻ REFRESH</button>
+
+      </div>
+    </section><!-- /panel-records -->
+
+  </main>
+
+  <!-- ════════════════════ FOOTER ════════════════════ -->
+  <footer id="footer">
+    SENTINELBORDER REGISTRY v1.0 · SIH 26188 · MINISTRY OF HOME AFFAIRS · SASHASTRA SEEMA BAL ·
+    AUTHORISED ADMIN ACCESS ONLY
+  </footer>
+
+  <script>
+    'use strict';
+
+    const API_REG     = '/api/v1/registry/passports';
+    const API_VERIFY  = '/api/v1/registry/verify';
+
+    // ── Photo drop zone ────────────────────────────────────────────────────
+    const photoDrop     = document.getElementById('photo-drop');
+    const photoInput    = document.getElementById('photo-file-input');
+    const photoPreview  = document.getElementById('photo-preview');
+    const photoFilename = document.getElementById('photo-filename');
+    let selectedPhoto   = null;
+
+    photoDrop.addEventListener('click',   () => photoInput.click());
+    photoDrop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') photoInput.click(); });
+    photoDrop.addEventListener('dragover', e => { e.preventDefault(); photoDrop.classList.add('drag-over'); });
+    photoDrop.addEventListener('dragleave', () => photoDrop.classList.remove('drag-over'));
+    photoDrop.addEventListener('drop', e => {
+      e.preventDefault();
+      photoDrop.classList.remove('drag-over');
+      const f = e.dataTransfer?.files?.[0];
+      if (f) handlePhotoSelected(f);
+    });
+    photoInput.addEventListener('change', () => {
+      if (photoInput.files.length > 0) handlePhotoSelected(photoInput.files[0]);
+    });
+
+    function handlePhotoSelected(file) {
+      if (!['image/jpeg', 'image/png'].includes(file.type)) {
+        showMsg('reg-result', 'error', 'Unsupported photo format. Use JPG or PNG.');
+        return;
+      }
+      selectedPhoto = file;
+      photoFilename.textContent = `📎 ${file.name}  (${(file.size / 1024).toFixed(1)} KB)`;
+      photoFilename.style.display = 'block';
+      const reader = new FileReader();
+      reader.onload = ev => {
+        photoPreview.src = ev.target.result;
+        photoPreview.style.display = 'block';
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // ── Registration ───────────────────────────────────────────────────────
+    document.getElementById('btn-register').addEventListener('click', async () => {
+      const form = new FormData();
+      const required = {
+        passport_number: 'f-passport-number',
+        issuing_country: 'f-issuing-country',
+        surname:         'f-surname',
+        given_names:     'f-given-names',
+        dob:             'f-dob',
+        nationality:     'f-nationality',
+      };
+
+      let valid = true;
+      for (const [field, id] of Object.entries(required)) {
+        const val = document.getElementById(id)?.value?.trim();
+        if (!val) {
+          showMsg('reg-result', 'warn', `Required field missing: ${field.replace('_', ' ').toUpperCase()}`);
+          valid = false;
+          break;
+        }
+        form.append(field, val);
+      }
+      if (!valid) return;
+
+      // Optional fields
+      const opt = {
+        issue_date:  'f-issue-date',
+        expiry_date: 'f-expiry-date',
+        person_id:   'f-person-id',
+      };
+      for (const [field, id] of Object.entries(opt)) {
+        const val = document.getElementById(id)?.value?.trim() || '';
+        form.append(field, val);
+      }
+      form.append('status', document.getElementById('f-status').value);
+
+      if (selectedPhoto) {
+        form.append('registry_photo', selectedPhoto, selectedPhoto.name);
+      }
+
+      const btn = document.getElementById('btn-register');
+      btn.disabled = true;
+      btn.textContent = '⏳ REGISTERING...';
+      hideMsg('reg-result');
+
+      try {
+        const res = await fetch(API_REG, { method: 'POST', body: form });
+        const json = await res.json();
+        if (res.ok) {
+          showMsg('reg-result', 'ok',
+            `✓ Registered: ${json.passport_number} / ${json.issuing_country} — ` +
+            `Person ID: ${json.person_id} — ` +
+            (json.embedding_stored ? 'Face embedding stored.' : 'No embedding (no photo supplied).')
+          );
+          clearForm();
+          loadRecords();
+        } else {
+          showMsg('reg-result', 'error', `✗ Error ${res.status}: ${json.detail || JSON.stringify(json)}`);
+        }
+      } catch (err) {
+        showMsg('reg-result', 'error', `✗ Network error: ${err.message}`);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '⟁ REGISTER PASSPORT';
+      }
+    });
+
+    function clearForm() {
+      ['f-passport-number','f-issuing-country','f-surname','f-given-names',
+       'f-dob','f-nationality','f-issue-date','f-expiry-date','f-person-id'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      document.getElementById('f-status').value = 'active';
+      selectedPhoto = null;
+      photoPreview.style.display = 'none';
+      photoPreview.src = '';
+      photoFilename.style.display = 'none';
+      photoInput.value = '';
+    }
+
+    // ── Verify ────────────────────────────────────────────────────────────
+    document.getElementById('btn-verify').addEventListener('click', async () => {
+      const pnum    = document.getElementById('v-passport-number')?.value?.trim();
+      const country = document.getElementById('v-country')?.value?.trim();
+      if (!pnum || !country) {
+        showVerify('warn', 'Enter a passport number and country code.');
+        return;
+      }
+      try {
+        const res  = await fetch(`${API_VERIFY}?passport_number=${encodeURIComponent(pnum)}&issuing_country=${encodeURIComponent(country)}`);
+        const json = await res.json();
+        if (json.found) {
+          showVerify('found',
+            `✓ FOUND — ${json.passport_number} / ${json.issuing_country} — ` +
+            `${json.surname}, ${json.given_names} — Status: ${json.status.toUpperCase()} — ` +
+            `Embedding: ${json.embedding_stored ? 'YES' : 'NO'}`
+          );
+        } else {
+          showVerify('not-found', `✗ NOT FOUND — ${pnum} / ${country} is not in the registry.`);
+        }
+      } catch (err) {
+        showVerify('not-found', `Network error: ${err.message}`);
+      }
+    });
+
+    function showVerify(cls, text) {
+      const el = document.getElementById('verify-result');
+      el.className = `verify-result ${cls}`;
+      el.textContent = text;
+      el.style.display = 'block';
+    }
+
+    // ── Load records ──────────────────────────────────────────────────────
+    async function loadRecords() {
+      try {
+        const res  = await fetch(`${API_REG}?limit=200`);
+        const json = await res.json();
+
+        const tbody  = document.getElementById('records-tbody');
+        const count  = document.getElementById('records-count');
+        const idle   = document.getElementById('records-idle');
+        const container = document.getElementById('records-container');
+
+        count.textContent = `${json.total} RECORD${json.total !== 1 ? 'S' : ''}`;
+        tbody.innerHTML = '';
+
+        if (!json.records || json.records.length === 0) {
+          idle.textContent = 'NO RECORDS — REGISTRY IS EMPTY';
+          idle.style.display = 'block';
+          container.style.display = 'none';
+          return;
+        }
+
+        idle.style.display = 'none';
+        container.style.display = 'block';
+
+        json.records.forEach(r => {
+          const tr = document.createElement('tr');
+          const statusCls = { active: 'badge-active', expired: 'badge-expired', revoked: 'badge-revoked' }[r.status] || '';
+          const embCls    = r.embedding_dimension > 0 ? 'emb-yes' : 'emb-no';
+          const embLabel  = r.embedding_dimension > 0 ? `✓ ${r.embedding_model}` : '—';
+          const shortPid  = r.person_id?.slice(0, 8) + '…';
+          tr.innerHTML = `
+            <td>${r.id}</td>
+            <td><strong>${esc(r.passport_number)}</strong></td>
+            <td>${esc(r.issuing_country)}</td>
+            <td>${esc(r.surname)}</td>
+            <td>${esc(r.given_names)}</td>
+            <td>${esc(r.dob)}</td>
+            <td>${esc(r.expiry_date || '—')}</td>
+            <td class="${statusCls}">${r.status.toUpperCase()}</td>
+            <td class="${embCls}">${embLabel}</td>
+            <td title="${esc(r.person_id)}">${shortPid}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (err) {
+        document.getElementById('records-idle').textContent = `Load error: ${err.message}`;
+      }
+    }
+
+    document.getElementById('btn-refresh').addEventListener('click', loadRecords);
+
+    // ── Utilities ─────────────────────────────────────────────────────────
+    function esc(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+    function showMsg(id, cls, text) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.className = cls;
+      el.textContent = text;
+      el.style.display = 'block';
+    }
+    function hideMsg(id) {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    }
+
+    // ── Init ──────────────────────────────────────────────────────────────
+    loadRecords();
+  </script>
+
+</body>
+</html>

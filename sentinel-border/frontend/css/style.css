@@ -520,6 +520,28 @@ body {
   gap: 8px;
 }
 
+/* Three-way layout when registry photo is available */
+.face-comparison-three {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+/* ─── Duplicate Passport Alert ───────────────────────────────────────────── */
+.dup-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--red-dim);
+  border: 1px solid var(--red);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  font-size: 0.67rem;
+  color: var(--red);
+  animation: alert-pulse 1.2s infinite;
+  letter-spacing: 0.5px;
+}
+
+.dup-alert-icon { font-size: 1rem; flex-shrink: 0; }
+
 .face-frame {
   display: flex;
   flex-direction: column;

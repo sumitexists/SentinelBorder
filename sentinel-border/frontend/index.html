@@ -213,10 +213,14 @@
 
         <!-- Biometric Comparison -->
         <div class="section-label">▶ BIOMETRIC FACE VERIFICATION</div>
-        <div class="face-comparison">
+        <div class="face-comparison face-comparison-three">
           <div class="face-frame">
             <div class="face-label">DOCUMENT PHOTO</div>
             <img id="face-doc" alt="Cropped face from document" />
+          </div>
+          <div class="face-frame">
+            <div class="face-label">REGISTRY PHOTO</div>
+            <img id="face-registry" alt="Cropped face from registry" />
           </div>
           <div class="face-frame">
             <div class="face-label">LIVE CAPTURE</div>
@@ -224,12 +228,34 @@
           </div>
         </div>
         <div class="stat-row" id="bio-stat-row" style="display:none">
-          <span class="stat-label">COSINE DISTANCE</span>
+          <span class="stat-label">DOC ↔ LIVE DISTANCE</span>
           <span class="stat-val" id="bio-distance">—</span>
         </div>
         <div class="stat-row" id="bio-status-row" style="display:none">
           <span class="stat-label">BIOMETRIC STATUS</span>
           <span class="stat-val" id="bio-status-val">—</span>
+        </div>
+
+        <!-- Registry Verification Stats -->
+        <div class="stat-row" id="reg-record-row" style="display:none">
+          <span class="stat-label">REGISTRY RECORD</span>
+          <span class="stat-val" id="reg-record-val">—</span>
+        </div>
+        <div class="stat-row" id="reg-doc-reg-row" style="display:none">
+          <span class="stat-label">DOC ↔ REGISTRY DIST</span>
+          <span class="stat-val" id="reg-doc-reg-val">—</span>
+        </div>
+        <div class="stat-row" id="reg-reg-live-row" style="display:none">
+          <span class="stat-label">REGISTRY ↔ LIVE DIST</span>
+          <span class="stat-val" id="reg-reg-live-val">—</span>
+        </div>
+        <div class="stat-row" id="reg-status-row" style="display:none">
+          <span class="stat-label">REGISTRY STATUS</span>
+          <span class="stat-val" id="reg-status-val">—</span>
+        </div>
+        <div id="dup-alert" style="display:none" class="dup-alert">
+          <span class="dup-alert-icon">⚠ï¸</span>
+          <span id="dup-alert-text"></span>
         </div>
 
         <div class="section-divider"></div>

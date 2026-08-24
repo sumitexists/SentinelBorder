@@ -6,11 +6,20 @@ Uses DeepFace with:
   - scikit-learn cosine_distances for metric computation
 
 Operates entirely offline after initial model download.
+
+Public API (backward-compatible):
+  run_biometrics(doc_bytes, live_bytes) -> BiometricResult
+
+New reusable helpers for three-way verification:
+  extract_embedding(image_bytes) -> tuple[np.ndarray | None, Image | None, str]
+  compare_embeddings(emb1, emb2)  -> dict {"match": bool, "distance": float}
+  run_three_way_verification(doc_bytes, live_bytes, registry_emb_bytes) -> dict
 """
 
 from __future__ import annotations
 
 import io
+import struct
 import tempfile
 import os
 from dataclasses import dataclass, field
@@ -119,7 +128,125 @@ def _cosine_distance(v1: np.ndarray, v2: np.ndarray) -> float:
     return float(np.clip(1.0 - cosine_similarity, 0.0, 1.0))
 
 
-# ─── Public API ───────────────────────────────────────────────────────────────
+# ─── Embedding serialisation helpers ─────────────────────────────────────────
+
+def embedding_to_bytes(embedding: np.ndarray) -> bytes:
+    """Serialise a float32 numpy array to raw bytes for SQLite BLOB storage."""
+    arr = embedding.astype(np.float32)
+    return struct.pack(f"{len(arr)}f", *arr)
+
+
+def bytes_to_embedding(blob: bytes) -> np.ndarray:
+    """Deserialise raw bytes (stored in SQLite) back to a float32 numpy array."""
+    count = len(blob) // 4
+    arr = struct.unpack(f"{count}f", blob)
+    return np.array(arr, dtype=np.float32)
+
+
+# ─── New reusable public helpers ──────────────────────────────────────────────
+
+def extract_embedding(
+    image_bytes: bytes,
+) -> tuple[Optional[np.ndarray], Optional[Image.Image], str]:
+    """
+    Public helper: detect exactly one face in image_bytes and return its
+    ArcFace embedding plus the cropped face PIL image.
+
+    Returns:
+        (embedding, crop, error_message)
+        On success: (np.ndarray, Image, "")
+        On failure: (None, None, "human-readable error")
+    """
+    try:
+        img_pil = bytes_to_pil(image_bytes)
+        embedding, crop = _get_embedding(img_pil)
+        return embedding, crop, ""
+    except Exception as exc:
+        return None, None, str(exc)
+
+
+def compare_embeddings(
+    emb1: np.ndarray,
+    emb2: np.ndarray,
+) -> dict:
+    """
+    Compare two ArcFace embeddings.
+    Returns: {"match": bool, "distance": float}
+    """
+    distance = round(_cosine_distance(emb1, emb2), 6)
+    match = distance <= FACE_MATCH_THRESHOLD
+    return {"match": match, "distance": distance}
+
+
+def run_three_way_verification(
+    doc_bytes: bytes,
+    live_bytes: Optional[bytes],
+    registry_embedding_bytes: bytes,
+) -> dict:
+    """
+    Perform three-way biometric verification:
+      document ↔ registry, registry ↔ live, document ↔ live.
+
+    Returns the additive registry_verification block dict:
+    {
+      "registry_record_found": True,
+      "document_to_live":     {"match": bool, "distance": float},
+      "document_to_registry": {"match": bool, "distance": float},
+      "registry_to_live":     {"match": bool, "distance": float},
+      "overall_verified":     bool,
+      "registry_face_crop_b64": str,
+      "error": str  # empty on success
+    }
+    """
+    result: dict = {
+        "registry_record_found": True,
+        "document_to_live":     {"match": False, "distance": None},
+        "document_to_registry": {"match": False, "distance": None},
+        "registry_to_live":     {"match": False, "distance": None},
+        "overall_verified":     False,
+        "registry_face_crop_b64": "",
+        "error": "",
+    }
+
+    # Deserialise registry embedding
+    try:
+        reg_emb = bytes_to_embedding(registry_embedding_bytes)
+    except Exception as exc:
+        result["error"] = f"Registry embedding corrupt: {exc}"
+        return result
+
+    # Extract doc embedding
+    doc_emb, doc_crop, doc_err = extract_embedding(doc_bytes)
+    if doc_emb is None:
+        result["error"] = f"Document face not detected: {doc_err}"
+        return result
+
+    # Document ↔ Registry
+    result["document_to_registry"] = compare_embeddings(doc_emb, reg_emb)
+
+    # Live photo checks
+    if live_bytes:
+        live_emb, _, live_err = extract_embedding(live_bytes)
+        if live_emb is not None:
+            result["document_to_live"]  = compare_embeddings(doc_emb, live_emb)
+            result["registry_to_live"]  = compare_embeddings(reg_emb, live_emb)
+        else:
+            result["error"] = f"Live face not detected: {live_err}"
+    else:
+        # No live photo — only doc ↔ registry can be done
+        result["document_to_live"]  = {"match": None, "distance": None}
+        result["registry_to_live"]  = {"match": None, "distance": None}
+
+    # Overall: all available comparisons must pass
+    comparisons = [result["document_to_registry"]]
+    if live_bytes:
+        comparisons += [result["document_to_live"], result["registry_to_live"]]
+    result["overall_verified"] = all(c.get("match") is True for c in comparisons)
+
+    return result
+
+
+# ─── Public API (backward-compatible) ────────────────────────────────────────
 
 def run_biometrics(
     doc_bytes: bytes,
