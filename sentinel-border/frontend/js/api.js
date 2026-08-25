@@ -30,7 +30,7 @@ async function submitScreening(docFile, liveBlob) {
     try {
       const errJson = await res.json();
       errMsg = errJson.detail || errMsg;
-    } catch (_) {}
+    } catch (_) { }
     throw new Error(errMsg);
   }
 
@@ -69,9 +69,9 @@ function updateGauge(score) {
   fill.style.width = `${score}%`;
 
   let color;
-  if (score < 30)       color = 'var(--green)';
-  else if (score < 70)  color = 'var(--yellow)';
-  else                  color = 'var(--red)';
+  if (score < 30) color = 'var(--green)';
+  else if (score < 70) color = 'var(--yellow)';
+  else color = 'var(--red)';
 
   fill.style.background = color;
   scoreVal.style.color = color;
@@ -83,14 +83,14 @@ function updateGauge(score) {
 // ─── Threat badge updater ─────────────────────────────────────────────────────
 function updateThreatBadge(level) {
   const badge = document.getElementById('threat-badge');
-  const text  = document.getElementById('threat-level-text');
+  const text = document.getElementById('threat-level-text');
   if (!badge || !text) return;
 
   badge.className = `${level}`;
   const labels = {
-    GREEN:  '🟢  CLEAR — LOW RISK',
+    GREEN: '🟢  CLEAR — LOW RISK',
     YELLOW: '🟡  REVIEW — MODERATE RISK',
-    RED:    '🔴  DETAIN — HIGH RISK TAMPERING',
+    RED: '🔴  DETAIN — HIGH RISK TAMPERING',
   };
   text.textContent = labels[level] || level;
 }
@@ -108,10 +108,10 @@ function renderFlags(flags) {
   }
 
   flags.forEach(flagText => {
-    const isRed    = /FAIL|MISMATCH|TAMPER|EXPIRED|DETAIN|CRITICAL/i.test(flagText);
+    const isRed = /FAIL|MISMATCH|TAMPER|EXPIRED|DETAIN|CRITICAL/i.test(flagText);
     const isYellow = /REVIEW|WARNING|WARN|ANOMALY|MISMATCH/i.test(flagText);
 
-    const cls  = isRed ? 'critical' : isYellow ? 'warning' : 'info';
+    const cls = isRed ? 'critical' : isYellow ? 'warning' : 'info';
     const icon = isRed ? '⚠' : isYellow ? '⚡' : 'ℹ';
 
     const item = document.createElement('div');
@@ -136,16 +136,16 @@ function renderResult(data) {
     el.className = `field-value ${val ? '' : 'empty'}`;
   };
 
-  setText('field-name',        d.name);
-  setText('field-docnum',      d.doc_number);
+  setText('field-name', d.name);
+  setText('field-docnum', d.doc_number);
   setText('field-nationality', d.nationality);
-  setText('field-dob',         formatDate(d.dob));
-  setText('field-sex',         d.sex === 'M' ? 'MALE' : d.sex === 'F' ? 'FEMALE' : d.sex);
-  setText('field-expiry',      d.expiry_parsed || formatDate(d.expiry));
-  setText('field-doctype',     d.doc_type);
-  setText('field-country',     d.issuing_country);
-  setText('field-address',     d.address);
-  setText('field-engine',      (d.ocr_engine || '').toUpperCase());
+  setText('field-dob', formatDate(d.dob));
+  setText('field-sex', d.sex === 'M' ? 'MALE' : d.sex === 'F' ? 'FEMALE' : d.sex);
+  setText('field-expiry', d.expiry_parsed || formatDate(d.expiry));
+  setText('field-doctype', d.doc_type);
+  setText('field-country', d.issuing_country);
+  setText('field-address', d.address);
+  setText('field-engine', (d.ocr_engine || '').toUpperCase());
 
   // MRZ raw
   const mrzEl = document.getElementById('mrz-raw-display');
@@ -153,12 +153,12 @@ function renderResult(data) {
 
   // ── Checksum tags ─────────────────────────────────────────────────────
   const cs = d.checksums || {};
-  setCheckTag('chk-docnum',    cs.doc_number_ok,  'DOC NUMBER ✓',  'DOC NUMBER ✗');
-  setCheckTag('chk-dob',       cs.dob_ok,         'DOB ✓',         'DOB FORGED ✗');
-  setCheckTag('chk-expiry',    cs.expiry_ok,      'EXPIRY ✓',      'EXPIRY FORGED ✗');
-  setCheckTag('chk-composite', cs.composite_ok,   'COMPOSITE ✓',   'COMPOSITE ✗');
-  setCheckTag('chk-expired',   !d.document_expired, 'VALID ✓',     'EXPIRED ✗');
-  setCheckTag('chk-parity',    !d.viz_mrz_mismatch, 'PARITY OK ✓', 'VIZ/MRZ MISMATCH ✗');
+  setCheckTag('chk-docnum', cs.doc_number_ok, 'DOC NUMBER ✓', 'DOC NUMBER ✗');
+  setCheckTag('chk-dob', cs.dob_ok, 'DOB ✓', 'DOB FORGED ✗');
+  setCheckTag('chk-expiry', cs.expiry_ok, 'EXPIRY ✓', 'EXPIRY FORGED ✗');
+  setCheckTag('chk-composite', cs.composite_ok, 'COMPOSITE ✓', 'COMPOSITE ✗');
+  setCheckTag('chk-expired', !d.document_expired, 'VALID ✓', 'EXPIRED ✗');
+  setCheckTag('chk-parity', !d.viz_mrz_mismatch, 'PARITY OK ✓', 'VIZ/MRZ MISMATCH ✗');
 
   // ── Threat badge + gauge ──────────────────────────────────────────────
   updateThreatBadge(data.threat_level || 'GREEN');
@@ -166,7 +166,7 @@ function renderResult(data) {
 
   // ── ELA Heatmap ───────────────────────────────────────────────────────
   const fa = data.forensic_analysis || {};
-  const elaImg       = document.getElementById('ela-heatmap');
+  const elaImg = document.getElementById('ela-heatmap');
   const elaPlaceholder = document.getElementById('ela-placeholder');
 
   if (fa.ela_heatmap_b64) {
@@ -179,23 +179,23 @@ function renderResult(data) {
   const elaScoreEl = document.getElementById('ela-score-val');
   if (elaStatRow && elaScoreEl) {
     elaStatRow.style.display = 'flex';
-    elaScoreEl.textContent   = `${fa.ela_score?.toFixed(3) ?? '—'} (${fa.ela_tamper_detected ? 'TAMPER DETECTED' : 'CLEAN'})`;
-    elaScoreEl.className     = `stat-val ${fa.ela_tamper_detected ? 'fail' : 'ok'}`;
+    elaScoreEl.textContent = `${fa.ela_score?.toFixed(3) ?? '—'} (${fa.ela_tamper_detected ? 'TAMPER DETECTED' : 'CLEAN'})`;
+    elaScoreEl.className = `stat-val ${fa.ela_tamper_detected ? 'fail' : 'ok'}`;
   }
 
   const edgeRow = document.getElementById('edge-stat-row');
   const edgeVal = document.getElementById('edge-stat-val');
   if (edgeRow && edgeVal) {
     edgeRow.style.display = 'flex';
-    edgeVal.textContent   = `${fa.edge_score?.toFixed(1) ?? '—'}% (${fa.edge_discontinuity_detected ? 'SPLICING DETECTED' : 'CLEAN'})`;
-    edgeVal.className     = `stat-val ${fa.edge_discontinuity_detected ? 'fail' : 'ok'}`;
+    edgeVal.textContent = `${fa.edge_score?.toFixed(1) ?? '—'}% (${fa.edge_discontinuity_detected ? 'SPLICING DETECTED' : 'CLEAN'})`;
+    edgeVal.className = `stat-val ${fa.edge_discontinuity_detected ? 'fail' : 'ok'}`;
   }
 
   // ── Biometric ─────────────────────────────────────────────────────────
   const bio = data.biometric_verification || {};
 
-  const faceDoc      = document.getElementById('face-doc');
-  const faceLive     = document.getElementById('face-live');
+  const faceDoc = document.getElementById('face-doc');
+  const faceLive = document.getElementById('face-live');
   const faceRegistry = document.getElementById('face-registry');
 
   if (bio.doc_face_crop_b64 && faceDoc) {
@@ -207,11 +207,11 @@ function renderResult(data) {
     faceLive.style.display = 'block';
   }
 
-  const bioRow  = document.getElementById('bio-stat-row');
+  const bioRow = document.getElementById('bio-stat-row');
   const bioDist = document.getElementById('bio-distance');
   if (bioRow && bioDist && bio.cosine_distance !== null && bio.cosine_distance !== undefined) {
     bioRow.style.display = 'flex';
-    bioDist.textContent  = bio.cosine_distance.toFixed(4);
+    bioDist.textContent = bio.cosine_distance.toFixed(4);
   }
 
   const bioStatusRow = document.getElementById('bio-status-row');
@@ -219,14 +219,14 @@ function renderResult(data) {
   if (bioStatusRow && bioStatusVal && bio.status) {
     bioStatusRow.style.display = 'flex';
     const statusMap = {
-      verified:     { label: 'VERIFIED ✓', cls: 'ok' },
-      review:       { label: 'REVIEW ⚡',  cls: 'warn' },
-      mismatch:     { label: 'MISMATCH ✗', cls: 'fail' },
-      no_comparison:{ label: 'NO LIVE PHOTO', cls: '' },
+      verified: { label: 'VERIFIED ✓', cls: 'ok' },
+      review: { label: 'REVIEW ⚡', cls: 'warn' },
+      mismatch: { label: 'MISMATCH ✗', cls: 'fail' },
+      no_comparison: { label: 'NO LIVE PHOTO', cls: '' },
     };
     const s = statusMap[bio.status] || { label: bio.status, cls: '' };
     bioStatusVal.textContent = s.label;
-    bioStatusVal.className   = `stat-val ${s.cls}`;
+    bioStatusVal.className = `stat-val ${s.cls}`;
   }
 
   // ── Registry Verification ───────────────────────────────────────────
@@ -245,15 +245,15 @@ function renderResult(data) {
   if (regRecordRow && regRecordVal && rv.registry_status) {
     regRecordRow.style.display = 'flex';
     const statusMap = {
-      VERIFIED:           { label: 'FOUND ✓',        cls: 'ok' },
-      FACE_MISMATCH:      { label: 'MISMATCH ✗',     cls: 'fail' },
-      NOT_IN_REGISTRY:    { label: 'NOT FOUND ✗',   cls: 'fail' },
-      NO_EMBEDDING:       { label: 'NO PHOTO ⚡',    cls: 'warn' },
-      SKIPPED:            { label: 'SKIPPED',          cls: '' },
+      VERIFIED: { label: 'FOUND ✓', cls: 'ok' },
+      FACE_MISMATCH: { label: 'MISMATCH ✗', cls: 'fail' },
+      NOT_IN_REGISTRY: { label: 'NOT FOUND ✗', cls: 'fail' },
+      NO_EMBEDDING: { label: 'NO PHOTO ⚡', cls: 'warn' },
+      SKIPPED: { label: 'SKIPPED', cls: '' },
     };
     const s = statusMap[rv.registry_status] || { label: rv.registry_status, cls: '' };
     regRecordVal.textContent = s.label;
-    regRecordVal.className   = `stat-val ${s.cls}`;
+    regRecordVal.className = `stat-val ${s.cls}`;
   }
 
   // Pairwise distances
@@ -266,7 +266,7 @@ function renderResult(data) {
     const d = pairObj.distance.toFixed(4);
     const matched = pairObj.match;
     val.textContent = `${d} (${matched ? 'MATCH' : 'FAIL'})`;
-    val.className   = `stat-val ${matched ? 'ok' : 'fail'}`;
+    val.className = `stat-val ${matched ? 'ok' : 'fail'}`;
   }
   _showRegDist('reg-doc-reg-row', 'reg-doc-reg-val', rv.document_to_registry);
   _showRegDist('reg-reg-live-row', 'reg-reg-live-val', rv.registry_to_live);
@@ -278,27 +278,32 @@ function renderResult(data) {
     regStatusRow.style.display = 'flex';
     const isVerified = rv.overall_verified;
     regStatusVal.textContent = isVerified ? 'THREE-WAY VERIFIED ✓' : 'VERIFICATION FAILED ✗';
-    regStatusVal.className   = `stat-val ${isVerified ? 'ok' : 'fail'}`;
+    regStatusVal.className = `stat-val ${isVerified ? 'ok' : 'fail'}`;
   }
 
   // Duplicate passport alert
   const dupAlert = document.getElementById('dup-alert');
-  const dupText  = document.getElementById('dup-alert-text');
-  if (dupAlert && dupText && dup.duplicate_found) {
-    const nums = (dup.duplicate_active_passports || [])
-      .map(p => `${p.passport_number} (${p.issuing_country})`).join(', ');
-    dupText.textContent = `DUPLICATE ACTIVE PASSPORT DETECTED: ${nums}`;
-    dupAlert.style.display = 'flex';
+  const dupText = document.getElementById('dup-alert-text');
+  if (dupAlert && dupText) {
+    if (dup.duplicate_found) {
+      const nums = (dup.duplicate_active_passports || [])
+        .map(p => `${p.passport_number} (${p.issuing_country})`).join(', ');
+      dupText.textContent = `DUPLICATE ACTIVE PASSPORT DETECTED: ${nums}`;
+      dupAlert.style.display = 'flex';
+      dupAlert.style.color = "red";
+    } else {
+      dupAlert.style.display = 'none';
+    }
   }
 
   // ── Flags ─────────────────────────────────────────────────────────────
   renderFlags(data.flags);
 
   // ── Processing time ───────────────────────────────────────────────────
-  const procEl   = document.getElementById('proc-time');
+  const procEl = document.getElementById('proc-time');
   const procInfo = document.getElementById('processing-info');
   if (procEl && procInfo) {
-    procEl.textContent    = `${data.processing_time_s?.toFixed(3) ?? '—'} s`;
+    procEl.textContent = `${data.processing_time_s?.toFixed(3) ?? '—'} s`;
     procInfo.style.display = 'flex';
   }
 }

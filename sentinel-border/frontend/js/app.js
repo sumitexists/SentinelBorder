@@ -153,6 +153,10 @@ btnRun.addEventListener('click', async () => {
   setLoading(true, 'INITIALISING PIPELINE...');
   btnRun.disabled = true;
 
+  // Clear previous duplicate alert immediately on new run
+  const dupAlert = document.getElementById('dup-alert');
+  if (dupAlert) dupAlert.style.display = 'none';
+
   const steps = [
     [400,  'MODULE 1: OCR & MRZ EXTRACTION...'],
     [800,  'MODULE 2: ICAO CHECKSUM VALIDATION...'],

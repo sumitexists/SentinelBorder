@@ -179,6 +179,20 @@ def get_active_passports_for_person(
     return [dict(r) for r in rows]
 
 
+# ─── 1-to-N Search Helpers ────────────────────────────────────────────────────
+
+def get_all_face_embeddings(db_path: str) -> list[tuple[int, str, str, bytes]]:
+    """
+    Fetch all non-null face embeddings from the passports table.
+    Returns a list of (passport_id, passport_number, issuing_country, face_embedding_bytes).
+    """
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT id, passport_number, issuing_country, face_embedding FROM passports WHERE face_embedding IS NOT NULL"
+        ).fetchall()
+    return [(r["id"], r["passport_number"], r["issuing_country"], r["face_embedding"]) for r in rows]
+
+
 # ─── List all (metadata only, no embedding bytes) ─────────────────────────────
 
 def list_passports(

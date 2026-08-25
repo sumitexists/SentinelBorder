@@ -50,6 +50,8 @@ from modules.biometrics import (
     extract_embedding,
     run_three_way_verification,
     embedding_to_bytes,
+    bytes_to_embedding,
+    compare_embeddings,
 )
 from modules.registry import (
     init_db,
@@ -58,6 +60,7 @@ from modules.registry import (
     get_active_passports_for_person,
     list_passports,
     count_passports,
+    get_all_face_embeddings,
 )
 from utils.helpers import get_logger, image_to_base64
 
@@ -155,49 +158,9 @@ async def screen_document(
     ocr = run_ocr(doc_bytes, content_type)
 
     # ── Gatekeeper: Reject Non-Government IDs ─────────────────────────────────
-    if not ocr.is_government_id:
-        elapsed = round(time.perf_counter() - t_start, 3)
-        flags = [f"INVALID_DOCUMENT_TYPE: Detected {ocr.id_type}. {ocr.id_reasoning}"]
-        flags.extend(ocr.errors)
-        log.warning("◀ Screening halted — Non-government ID detected (type='%s')", ocr.id_type)
-        return JSONResponse(content={
-            "status": "success",
-            "threat_level": "RED",
-            "composite_risk_score": 100,
-            "processing_time_s": elapsed,
-            "flags": flags,
-            "extracted_data": {
-                "name": "",
-                "surname": "",
-                "given_names": "",
-                "doc_number": "",
-                "doc_type": ocr.id_type or "UNKNOWN",
-                "nationality": "",
-                "dob": "",
-                "expiry": "",
-                "expiry_parsed": "",
-                "sex": "",
-                "issuing_country": "",
-                "address": "",
-                "mrz_detected": False,
-                "mrz_raw": "",
-                "viz_text": ocr.viz_text[:500] if ocr.viz_text else "",
-                "ocr_engine": ocr.ocr_engine_used,
-                "checksums": {
-                    "doc_number_ok": False,
-                    "dob_ok": False,
-                    "expiry_ok": False,
-                    "composite_ok": False,
-                    "any_failed": True,
-                },
-                "document_expired": False,
-                "viz_mrz_mismatch": False,
-            },
-            "forensic_analysis": {},
-            "biometric_verification": {},
-            "registry_verification": {},
-            "duplicate_passport_check": {},
-        })
+    # Removed per user request to allow all document types.
+    # if not ocr.is_government_id:
+    #     ...
 
 
     # ── Module 2: Validation ──────────────────────────────────────────────────
@@ -226,11 +189,47 @@ async def screen_document(
     # ── Module 4: Biometrics ──────────────────────────────────────────────────
     log.info("  [M4] Running biometric verification...")
     bio = run_biometrics(doc_bytes, live_bytes)
+    
+    duplicate_active_flag = False
+
+    # 1-to-N search against all registered faces
+    if REGISTRY_ENABLED:
+        log.info("  [M4] Running 1-to-N duplicate document check...")
+        doc_emb, _, _ = extract_embedding(doc_bytes)
+        if doc_emb is not None:
+            db_embs = get_all_face_embeddings(REGISTRY_DB_PATH)
+            match_count = 0
+            matching_passports = []
+            for pid, pnum, ctry, emb_bytes in db_embs:
+                try:
+                    db_emb = bytes_to_embedding(emb_bytes)
+                    res = compare_embeddings(doc_emb, db_emb)
+                    if res.get("match"):
+                        # Skip if it's the exact same document we are currently screening
+                        # (That's a normal verification, not a duplicate fraud)
+                        if pnum == ocr.doc_number and ctry == ocr.issuing_country:
+                            continue
+
+                        match_count += 1
+                        matching_passports.append({
+                            "passport_number": pnum,
+                            "issuing_country": ctry,
+                        })
+                except Exception as e:
+                    log.warning("Failed to compare embedding for passport %d: %s", pid, e)
+            
+            if match_count > 0:
+                duplicate_active_flag = True
+                duplicate_passport_check = {
+                    "checked": True,
+                    "duplicate_found": True,
+                    "duplicate_active_passports": matching_passports,
+                    "threat": "POSSIBLE_DUPLICATE_ACTIVE_PASSPORT",
+                }
+                log.warning("◀ Duplicate document detected! Face matches %d existing records.", match_count)
 
     # ── Module 5: Registry Verification ──────────────────────────────────────
     registry_verification: dict = {}
-    duplicate_passport_check: dict = {}
-    duplicate_active_flag = False
 
     registry_qualified = (
         REGISTRY_ENABLED
@@ -256,8 +255,9 @@ async def screen_document(
                 "overall_verified": False,
                 "registry_face_crop_b64": "",
             }
-            duplicate_passport_check = {"checked": False, "duplicate_found": False,
-                                        "duplicate_active_passports": [], "threat": "NONE"}
+            if not duplicate_active_flag:
+                duplicate_passport_check = {"checked": False, "duplicate_found": False,
+                                            "duplicate_active_passports": [], "threat": "NONE"}
             log.info("  [M5] Passport %s/%s not found in registry — flagging for review.",
                      ocr.doc_number, ocr.issuing_country)
         else:
@@ -274,8 +274,9 @@ async def screen_document(
                     "overall_verified": False,
                     "registry_face_crop_b64": "",
                 }
-                duplicate_passport_check = {"checked": False, "duplicate_found": False,
-                                            "duplicate_active_passports": [], "threat": "NONE"}
+                if not duplicate_active_flag:
+                    duplicate_passport_check = {"checked": False, "duplicate_found": False,
+                                                "duplicate_active_passports": [], "threat": "NONE"}
             else:
                 # Run three-way verification
                 three_way = run_three_way_verification(doc_bytes, live_bytes, embedding_blob)
@@ -309,7 +310,7 @@ async def screen_document(
                             ],
                             "threat": "POSSIBLE_DUPLICATE_ACTIVE_PASSPORT",
                         }
-                    else:
+                    elif not duplicate_active_flag:
                         duplicate_passport_check = {
                             "checked": True,
                             "duplicate_found": False,
@@ -317,12 +318,13 @@ async def screen_document(
                             "threat": "NONE",
                         }
                 else:
-                    duplicate_passport_check = {
-                        "checked": False,
-                        "duplicate_found": False,
-                        "duplicate_active_passports": [],
-                        "threat": "NONE",
-                    }
+                    if not duplicate_active_flag:
+                        duplicate_passport_check = {
+                            "checked": False,
+                            "duplicate_found": False,
+                            "duplicate_active_passports": [],
+                            "threat": "NONE",
+                        }
     else:
         registry_verification = {
             "registry_record_found": False,
@@ -333,8 +335,9 @@ async def screen_document(
             "overall_verified": False,
             "registry_face_crop_b64": "",
         }
-        duplicate_passport_check = {"checked": False, "duplicate_found": False,
-                                    "duplicate_active_passports": [], "threat": "NONE"}
+        if not duplicate_active_flag:
+            duplicate_passport_check = {"checked": False, "duplicate_found": False,
+                                        "duplicate_active_passports": [], "threat": "NONE"}
 
     # ── Composite Threat Score ─────────────────────────────────────────────────
     face_mismatch_flag = bio.status in ("mismatch",) or (
